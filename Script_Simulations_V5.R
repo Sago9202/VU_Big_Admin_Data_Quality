@@ -1,7 +1,7 @@
 ##-----------------------------------------##
 ## Simulation on Selection Bias Estimators ##
 ## Written by: Santiago Gómez-Echeverry    ##
-## Last update: 05/06/2023                 ##
+## Last update: 30/08/2023                 ##
 ##-----------------------------------------##
 
 #### - (I) Working space and packages - ####
@@ -20,7 +20,7 @@ setwd(fold_code) # For the moment, let us work on the code folder
 # Below are all the packages that we will use in the analyses. We will check if they are installed, install them if they
 # are not, and finally load them. Note: dutchmasters is installed from github
 packages <- c('ggplot2', 'ggpubr', 'forecast', 'reshape2', 'MASS', 'corpcor', 'ggridges', 'ltm', 'stringr', 'knitr', 'kableExtra', 'tidyr', 'dplyr', 'utils',
-              'robustbase', 'forcats')
+              'robustbase', 'forcats', 'cols4all', 'matrixStats')
     
 # Installing the packages
 installed_packages <- packages %in% rownames(installed.packages())
@@ -41,7 +41,9 @@ colMed <- function(array){
   } 
   return(mat_array)
 }
-    
+
+nice_palette <- c4a(palette = "brewer.paired", n = 11)
+
 #### - (II) Selection Bias Estimators - ####
 
 # This section creates a function for each one of the estimators that we will test on the simulated data sets. It's
@@ -78,7 +80,8 @@ Meng_h <- function(Y,S){
     D_O[t] <- sqrt((N_t-n_t)/n_t)
     S_Meng[t] <- D_I[t]*D_U[t]*D_O[t]
   }
-  return(S_Meng)
+  res <- list(S_Meng, D_I, D_U, r_ys)
+  return(res)
 }
     
 # (2) Meng_Z1
@@ -108,7 +111,8 @@ Meng_Z1 <- function(Y,S,Z){
     D_O[t] <- sqrt((N_t-n_t)/n_t)
     S_Meng[t] <- D_I[t]*D_U[t]*D_O[t]
   }
-  return(S_Meng)
+  res <- list(S_Meng, D_I, D_U, r_ys)
+  return(res)
 }
 
 # (3) Meng_Z2
@@ -140,12 +144,13 @@ Meng_Z2 <- function(Y,S,Z){
     D_O[t] <- sqrt((N_t-n_t)/n_t)
     S_Meng[t] <- D_I[t]*D_U[t]*D_O[t]
   }
-  return(S_Meng)
+  res <- list(S_Meng, D_I, D_U, r_ys)
+  return(res)
 }
 
 # (4) SMUB_f
 
-SMUB_f <- function(Y,S,Z){
+MUB_f <- function(Y,S,Z){
   t_total <- ncol(Y)
   y <- matrix(data = NA, nrow = length(Y[,1]), ncol = t_total)
   z <- matrix(data = NA, nrow = length(Z[,1]), ncol = t_total)
@@ -171,12 +176,13 @@ SMUB_f <- function(Y,S,Z){
     Y_bar_phi[t] <- mean(y[,t], na.rm = TRUE) - g_hat_phi[t]*c_obs[t]*(mean(z[,t], na.rm = TRUE) - mean(Z[,t]))
     S_MUB[t] <- mean(y[,t], na.rm = TRUE) - Y_bar_phi[t]
   }
-  return(S_MUB)
+  res <- list(S_MUB, phi_hat, phi)
+  return(res)
 }
     
 # (5) SMUB_ht
     
-SMUB_ht <- function(Y,S,Z){
+MUB_ht <- function(Y,S,Z){
   t_total <- ncol(Y)
   y <- matrix(data = NA, nrow = length(Y[,1]), ncol = t_total)
   z <- matrix(data = NA, nrow = length(Z[,1]), ncol = t_total)
@@ -200,20 +206,21 @@ SMUB_ht <- function(Y,S,Z){
       phi_hat[t] <- phi[t-1]
     }
     # Truncation to [0,1]
-    phi_hat_trunc[t] <- ifelse(phi_hat[t]>0,ifelse(phi_hat[t]<1,phi_hat[t],1),0)
+    phi_hat[t] <- ifelse(phi_hat[t]>0,ifelse(phi_hat[t]<1,phi_hat[t],1),0)
     # Remaining elements of Y(phi)
-    g_hat_phi[t] <- (phi_hat_trunc[t]+(1-phi_hat_trunc[t])*rho_zy[t])/(phi_hat_trunc[t]*rho_zy[t]+(1-phi_hat_trunc[t]))
+    g_hat_phi[t] <- (phi_hat[t]+(1-phi_hat[t])*rho_zy[t])/(phi_hat[t]*rho_zy[t]+(1-phi_hat[t]))
     c_obs[t] <- sd(y[,t], na.rm = TRUE)/sd(z[,t], na.rm = TRUE)
     # Y(phi) and MUB estimator 
     Y_bar_phi[t] <- mean(y[,t], na.rm = TRUE) - g_hat_phi[t]*c_obs[t]*(mean(z[,t], na.rm = TRUE) - mean(Z[,t]))
     S_MUB[t] <- mean(y[,t], na.rm = TRUE) - Y_bar_phi[t]
   }
-  return(S_MUB)
+  res <- list(S_MUB, phi_hat, phi)
+  return(res)
 }
 
 # (6) SMUB_ha
 
-SMUB_ha <- function(Y,S,Z){
+MUB_ha <- function(Y,S,Z){
   t_total <- ncol(Y)
   y <- matrix(data = NA, nrow = length(Y[,1]), ncol = t_total)
   z <- matrix(data = NA, nrow = length(Z[,1]), ncol = t_total)
@@ -245,12 +252,13 @@ SMUB_ha <- function(Y,S,Z){
     Y_bar_phi[t] <- mean(y[,t], na.rm = TRUE) - g_hat_phi[t]*c_obs[t]*(mean(z[,t], na.rm = TRUE) - mean(Z[,t]))
     S_MUB[t] <- mean(y[,t], na.rm = TRUE) - Y_bar_phi[t]
   }
-  return(S_MUB)
+  res <- list(S_MUB, phi_hat, phi)
+  return(res)
 }
 
 # (7) SMUB_wt
 
-SMUB_wt <- function(Y,S,Z){
+MUB_wt <- function(Y,S,Z){
   t_total <- ncol(Y)
   y <- matrix(data = NA, nrow = length(Y[,1]), ncol = t_total)
   z <- matrix(data = NA, nrow = length(Z[,1]), ncol = t_total)
@@ -277,20 +285,21 @@ SMUB_wt <- function(Y,S,Z){
            (Delta_Z[t-1]-rho_zy[t-1]*(1/ratio)*Delta_Y[t-1]))
     }
     # Truncation to [0,1]
-    phi_hat_trunc[t] <- ifelse(phi_hat[t]>0,ifelse(phi_hat[t]<1,phi_hat[t],1),0)
+    phi_hat[t] <- ifelse(phi_hat[t]>0,ifelse(phi_hat[t]<1,phi_hat[t],1),0)
     # Remaining elements of Y(phi)
-    g_hat_phi[t] <- (phi_hat_trunc[t]+(1-phi_hat_trunc[t])*ratio*rho_zy[t])/(phi_hat_trunc[t]*(1/ratio)*rho_zy[t]+(1-phi_hat_trunc[t]))
+    g_hat_phi[t] <- (phi_hat[t]+(1-phi_hat[t])*ratio*rho_zy[t])/(phi_hat[t]*(1/ratio)*rho_zy[t]+(1-phi_hat[t]))
     c_obs[t] <- sd(y[,t], na.rm = TRUE)/sd(z[,t], na.rm = TRUE)
     # Y(phi) and MUB estimator 
     Y_bar_phi[t] <- mean(y[,t], na.rm = TRUE) - g_hat_phi[t]*c_obs[t]*(mean(z[,t], na.rm = TRUE) - mean(Z[,t]))
     S_MUB[t] <- mean(y[,t], na.rm = TRUE) - Y_bar_phi[t]
   }
-  return(S_MUB)
+  res <- list(S_MUB, phi_hat, phi)
+  return(res)
 }
 
 # (8) SMUB_wa
 
-SMUB_wa <- function(Y,S,Z){
+MUB_wa <- function(Y,S,Z){
   t_total <- ncol(Y)
   y <- matrix(data = NA, nrow = length(Y[,1]), ncol = t_total)
   z <- matrix(data = NA, nrow = length(Z[,1]), ncol = t_total)
@@ -322,12 +331,13 @@ SMUB_wa <- function(Y,S,Z){
     Y_bar_phi[t] <- mean(y[,t], na.rm = TRUE ) - g_hat_phi[t]*c_obs[t]*(mean(z[,t], na.rm = TRUE) - mean(Z[,t]))
     S_MUB[t] <- mean(y[,t], na.rm = TRUE) - Y_bar_phi[t]
   }
-  return(S_MUB)
+  res <- list(S_MUB, phi_hat, phi)
+  return(res)
 }
 
 # (9) SMUB_mt
     
-SMUB_mt <- function(Y,S,Z){
+MUB_mt <- function(Y,S,Z){
   t_total <- ncol(Y)
   y <- matrix(data = NA, nrow = length(Y[,1]), ncol = t_total)
   z <- matrix(data = NA, nrow = length(Z[,1]), ncol = t_total)
@@ -351,20 +361,21 @@ SMUB_mt <- function(Y,S,Z){
       phi_hat[t] <- phi[t-1]
     }
     # Truncation to [0,1]
-    phi_hat_trunc[t] <- ifelse(phi_hat[t]>0,ifelse(phi_hat[t]<1,phi_hat[t],1),0)
+    phi_hat[t] <- ifelse(phi_hat[t]>0,ifelse(phi_hat[t]<1,phi_hat[t],1),0)
     # Remaining elements of Y(phi)
-    g_hat_phi[t] <- (phi_hat_trunc[t]+(1-phi_hat_trunc[t])*rho_zy[t])/(phi_hat_trunc[t]*rho_zy[t]+(1-phi_hat_trunc[t]))
+    g_hat_phi[t] <- (phi_hat[t]+(1-phi_hat[t])*rho_zy[t])/(phi_hat[t]*rho_zy[t]+(1-phi_hat[t]))
     c_obs[t] <- sd(y[,t], na.rm = TRUE)/sd(z[,t], na.rm = TRUE)
     # Y(phi) and MUB estimator 
     Y_bar_phi[t] <- mean(y[,t], na.rm = TRUE) - g_hat_phi[t]*c_obs[t]*(mean(z[,t], na.rm = TRUE) - mean(Z[,t]))
     S_MUB[t] <- mean(y[,t], na.rm = TRUE) - Y_bar_phi[t]
   }
-  return(S_MUB)
+  res <- list(S_MUB, phi_hat, phi)
+  return(res)
 }
     
 # (10) SMUB_ma
 
-SMUB_ma <- function(Y,S,Z){
+MUB_ma <- function(Y,S,Z){
   t_total <- ncol(Y)
   y <- matrix(data = NA, nrow = length(Y[,1]), ncol = t_total)
   z <- matrix(data = NA, nrow = length(Z[,1]), ncol = t_total)
@@ -395,7 +406,8 @@ SMUB_ma <- function(Y,S,Z){
     Y_bar_phi[t] <- mean(y[,t], na.rm = TRUE) - g_hat_phi[t]*c_obs[t]*(mean(z[,t], na.rm = TRUE) - mean(Z[,t]))
     S_MUB[t] <- mean(y[,t], na.rm = TRUE) - Y_bar_phi[t]
   }
-  return(S_MUB)
+  res <- list(S_MUB, phi_hat, phi)
+  return(res)
 }
 
 # (11) COS
@@ -417,7 +429,8 @@ COS <- function(Y,S,Z){
       S_COS[t] <- (sigma_ys_hat/sigma_zs)*(mean(z[,t], na.rm = TRUE) - mean(Z[,t]))
     }
   }
-  return(S_COS)
+  res <- list(S_COS, sigma_ys_hat)
+  return(res)
 }
   
 # (12) Z_diff
@@ -450,6 +463,7 @@ MAD <- function(Y,S,M){
     RS[t] <- (mean(y[,t], na.rm = TRUE)- mean(Y[,t], na.rm = TRUE))/
       mean(Y[,t], na.rm = TRUE)
     RS_hat[t] <- M[t]/(mean(y[,t], na.rm = TRUE)-M[t])
+    #RS_hat[t] <- ifelse((mean(y[,t], na.rm = TRUE)-M[t])<0.005, NA, RS_hat[t])
   }
   MAD <- mean(abs(RS_hat[-1]-RS[-1]), na.rm = TRUE)
   MAD_list <- list("RS" = RS, "RS_hat"= RS_hat, "MAD" = MAD)
@@ -468,6 +482,7 @@ RMSD <- function(Y,S,M){
     RS[t] <- (mean(y[,t], na.rm = TRUE)- mean(Y[,t], na.rm = TRUE))/
       mean(Y[,t], na.rm = TRUE)
     RS_hat[t] <- M[t]/(mean(y[,t], na.rm = TRUE)-M[t])
+    #RS_hat[t] <- ifelse((mean(y[,t], na.rm = TRUE)-M[t])<0.005, NA, RS_hat[t])
   }
   RMSD <- sqrt(mean((RS_hat[-1]-RS[-1])^2, na.rm = TRUE))
   RMSD_list <- list("RS" = RS, "RS_hat" = RS_hat, "RMSD" = RMSD)
@@ -482,7 +497,7 @@ set.seed(42) # We start by setting the seed so that we can reproduce the whole p
   
 # Now, we define the initial parameters that we will use to create the data
 
-mu <- 5 # Mean of the normal variable
+mu <- 10 # Mean of the normal variable
 sigma <- 1 # Deviation of the normal variable
 N <- 1000 # Number of observations
 Time <- 10 # Number of periods
@@ -722,7 +737,7 @@ for (b in 1:n_bt){
 Vars <- c("S","Y","M","Alpha","Beta","Z", paste0(c("MAD_D","RMSD_D"), rep(1:D, each = 2)))
 Perf_Mat <- data.frame(matrix(nrow = 0, ncol = length(Vars)))
 colnames(Perf_Mat) <- Vars
-Est <- c("Meng_h","Meng_Z1","Meng_Z2", "SMUB_f", "SMUB_ht","SMUB_ha", "SMUB_wt", "SMUB_wa", "SMUB_mt", "SMUB_ma", "COS", "Zdiff")
+Est <- c("Meng_h","Meng_Z1","Meng_Z2", "MUB_f", "MUB_ht","MUB_ha", "MUB_wt", "MUB_wa", "MUB_mt", "MUB_ma", "COS", "Zdiff")
 n_Est <- length(Est)
 
 # i. Normal distribution 
@@ -743,15 +758,17 @@ for (cz in 1:n_aux){
         Z_temp <- Z[[cz]][,,d]                                                    # Temporary Z matrix
         
         # Since the estimation for Meng_rYS is different (i.e., doesn't include Z) we will use a conditional
-        if (Est[m]=="Meng_h"){
-          Est_temp <- Est_hat[[m]][,cs,d] <- get(Est[m])(Y_temp, S_temp)         # Vector with the selection estimates
-          RS[,cs,d] <- as.vector(MAD(Y_temp, S_temp, Est_temp)[[1]])             # Vector with the true relative selection (only needed once!)
-        } else if (Est[m]!="Meng_h"){
+        if (m==1){
+          Est_temp <- Est_hat[[m]][,cs,d] <- get(Est[m])(Y_temp, S_temp)[[1]]     # Vector with the selection estimates
+          RS[,cs,d] <- as.vector(MAD(Y_temp, S_temp, Est_temp)[[1]])              # Vector with the true relative selection (only needed once!)
+        } else if (m!=1 & m!=12){
+          Est_temp <- Est_hat[[m]][,cs,d] <- get(Est[m])(Y_temp, S_temp, Z_temp)[[1]]  # Vector with the selection estimates
+        } else if (m == 12){
           Est_temp <- Est_hat[[m]][,cs,d] <- get(Est[m])(Y_temp, S_temp, Z_temp)  # Vector with the selection estimates
         }
         Perf[[m]][cs,(d*2)-1] <- MAD(Y_temp, S_temp, Est_temp)[[3]]               # MAD constructed with Y, S and the selection estimates
         Perf[[m]][cs,(d*2)] <- RMSD(Y_temp, S_temp, Est_temp)[[3]]                # RMSD constructed with Y, S and the selection estimates
-        RS_hat[[m]][,cs,d] <- as.vector(MAD(Y_temp, S_temp, Est_temp)[[2]])      # Vector with the estimated relative selection
+        RS_hat[[m]][,cs,d] <- as.vector(MAD(Y_temp, S_temp, Est_temp)[[2]])       # Vector with the estimated relative selection
       }
     }
     # Let us assign the results into a data frame 
@@ -786,18 +803,20 @@ for (b in 1:n_bt){
           Z_temp <- Z_bt[[b]][[cz]][,,d]                                         # Temporary Z matrix 
           
           # Since the estimation for Meng_rYS is different (i.e., doesn't include Z) we will use a conditional
-          if (Est[m]=="Meng_h"){
-            Est_temp <- Est_hat[[m]][,cs,d] <- get(Est[m])(B_temp, S_temp)                   # Vector with the selection estimates
+          if (m==1){
+            Est_temp <- Est_hat[[m]][,cs,d] <- get(Est[m])(B_temp, S_temp)[[1]]              # Vector with the selection estimates
             RS_by_B[[b]][,cs,d] <- as.vector(MAD(Y_temp, S_temp, Est_temp)[[1]])             # Vector with the true relative selection
-          } else if (Est[m]!="Meng_h"){
-            Est_temp <- Est_hat[[m]][,cs,d] <- get(Est[m])(B_temp, S_temp, Z_temp) # Vector with the selection estimates
-          } 
+          } else if (m!=1 & m!=12){
+            Est_temp <- Est_hat[[m]][,cs,d] <- get(Est[m])(B_temp, S_temp, Z_temp)[[1]]      # Vector with the selection estimates
+          } else if (m == 12){
+            Est_temp <- Est_hat[[m]][,cs,d] <- get(Est[m])(B_temp, S_temp, Z_temp)           # Vector with the selection estimates
+          }
           Perf[[m]][cs,(d*2)-1] <- MAD(B_temp, S_temp, Est_temp)[[3]]            # MAD constructed with Y, S and the selection estimates
           Perf[[m]][cs,(d*2)] <- RMSD(B_temp, S_temp, Est_temp)[[3]]             # RMSD constructed with Y, S and the selection estimates
           RS_hat[[m]][,cs,d] <- as.vector(MAD(B_temp, S_temp, Est_temp)[[2]])      # Vector with the estimated relative selection
         }
       }
-      # Let us asssign the results into a data frame 
+      # Let us assign the results into a data frame 
       Perf[[m]] <- as.data.frame(cbind(as.vector(paste0("S", 1:n_sel)),
                                          t(matrix(data = rep(c(paste0("beta",b), Est[m], al_bt$Var1[b], al_bt$Var2[b], paste0("Z",cz)), n_sel), nrow = 5)), Perf[[m]]))
       colnames(Perf[[m]]) <- Vars                                                # We need to add the proper names to the columns of the data frame
@@ -839,6 +858,7 @@ write.table(mPerf, file = paste0(fold_data,"/Simulated_Data_N", N, "_D", D, "_T"
 
 # Normal Y variable
 mPerfTr <- melt(Perf_Mat, id.vars = c("S","M","Y","Alpha","Beta","Z")) # Trimmed data
+RS_tr <- RS
 
 pb <- txtProgressBar(min = 0, max = n_bt, initial = 0, style = 3) 
 for (cz in 1:n_aux){
@@ -851,15 +871,22 @@ for (cz in 1:n_aux){
         S_temp <- as.matrix(S[[cs]][,,d])
         Z_temp <- Z[[cz]][,,d]
         if (m == 1){
-          Est_temp <- get(Est[m])(Y_temp, S_temp)  
-        } else if (m !=1) {
-          Est_temp <- get(Est[m])(Y_temp, S_temp, Z_temp)  
+          Est_temp <- get(Est[m])(Y_temp, S_temp)[[1]]  
+        } else if (m!=1 & m != 12) {
+          Est_temp <- get(Est[m])(Y_temp, S_temp, Z_temp)[[1]]  
+        } else if (m==12) {
+          Est_temp <- get(Est[m])(Y_temp, S_temp, Z_temp)
         }
         y_temp <- Y_temp*S_temp
         y_temp[y_temp==0] <- NA
-        check <- abs(Est_temp - colMeans(y_temp, na.rm = TRUE))<0.001
+        check <- abs(Est_temp - colMeans(y_temp, na.rm = TRUE))<0.003
+        check_real <- colMeans(Y_temp, na.rm = TRUE)<0.003
+        if (any(check_real == TRUE, na.rm = TRUE) == TRUE){
+          RS_tr[,cs,d] <- as.vector(rep(NA, Time)) 
+        } else{
+        }
         if (any(check == TRUE, na.rm = TRUE) == TRUE){
-          # Replace for NA in the Performance Matriz
+          # Replace for NA in the Performance Matrix
           mPerfTr <- mPerfTr %>% 
             mutate(value = ifelse(Z == paste0("Z", cz) & Y == "Y" & S == paste0("S", cs) & M == Est[m] & grepl(as.character(d), variable), NA, value))
           # Replace for NA in the RS estimates
@@ -888,13 +915,15 @@ for (b in 1:n_bt){
           S_temp <- as.matrix(S_bt[[b]][[cs]][,,d])
           Z_temp <- Z_bt[[b]][[cz]][,,d]
           if (m == 1){
-            Est_temp <- get(Est[m])(Y_temp, S_temp)  
-          } else if (m !=1) {
-            Est_temp <- get(Est[m])(Y_temp, S_temp, Z_temp)  
+            Est_temp <- get(Est[m])(Y_temp, S_temp)[[1]]  
+          } else if (m!=1 & m!=12) {
+            Est_temp <- get(Est[m])(Y_temp, S_temp, Z_temp)[[1]]  
+          } else if (m==12){
+            Est_temp <- get(Est[m])(Y_temp, S_temp, Z_temp)
           }
           y_temp <- Y_temp*S_temp
           y_temp[y_temp==0] <- NA
-          check <- abs(Est_temp - colMeans(y_temp, na.rm = TRUE))<0.001
+          check <- abs(Est_temp - colMeans(y_temp, na.rm = TRUE))<0.003
           if (any(check == TRUE, na.rm = TRUE) == TRUE){
             # Replace for NA in the Performance Matriz
             mPerfTr <- mPerfTr %>% 
@@ -932,10 +961,10 @@ Prf_M <- c("MAD", "RMSD")
 setwd(fold_graphs) # We will store all of the graphs and tables in this folder
 
 # Since Meng_Z2 and SMUB_f are equivalent there is no point in plotting them both
-Est2 <- c("Meng_h", "Meng_Z1", "Meng_Z2/SMUB_f", "SMUB_ht", "SMUB_ha", "SMUB_wt", "SMUB_wa", "SMUB_mt", "SMUB_ma", "COS", "Zdiff")
+Est2 <- c("Meng_h", "Meng_Z1", "Meng_Z2/MUB_f", "MUB_ht", "MUB_ha", "MUB_wt", "MUB_wa", "MUB_mt", "MUB_ma", "COS", "Zdiff")
 Perf_Plot <- mPerfTr %>% 
-  filter(M != "SMUB_f") %>% 
-  mutate(M = str_replace(M, "Meng_Z2", "Meng_Z2/SMUB_f")) %>% 
+  filter(M != "MUB_f") %>% 
+  mutate(M = str_replace(M, "Meng_Z2", "Meng_Z2/MUB_f")) %>% 
   mutate(M = factor(M, levels = Est2))
 
 # Recoding the estimators
@@ -945,7 +974,7 @@ for (i in 1:length(Prf_M)){
   Plot_SZ <- Perf_Plot %>%
     filter(Z!= "Cor(YZ) = 0.05" & Z!= "Cor(YZ) = 0.95"  &  grepl("Y", Y) & grepl(Prf_M[i], variable)) %>%       # Selecting only the results that we want to plot 
     ggplot(aes(x = value, y = fct_rev(M), fill = M)) +                                                          # General aesthetic
-    geom_boxplot(outlier.shape = NA) + scale_fill_brewer(palette = "Spectral") +                                         # The type of plot that we will use
+    geom_boxplot(outlier.shape = NA, alpha = 0.5) + scale_fill_manual(values = nice_palette) +                                         # The type of plot that we will use
     facet_grid(Z~S)  + xlim(0,1.5) +                                                                            # Make several panels with specific limits
     ylab("Estimator") + xlab(Prf_M[i])  +                                                                       # The labels of each axis
     theme(text = element_text(size = 30),
@@ -959,7 +988,7 @@ for (i in 1:length(Prf_M)){
   Plot_SZ <- Perf_Plot %>%
     filter(Z!= "Cor(YZ) = 0.2" & Z!= "Cor(YZ) = 0.8"  &  grepl("Y", Y) & grepl(Prf_M[i], variable)) %>%    # Selecting only the results that we want to plot 
     ggplot(aes(x = value, y = fct_rev(M), fill = M)) +                                                                   # General aesthetic
-    geom_boxplot(outlier.shape = NA) + scale_fill_brewer(palette = "Spectral") +                                         # The type of plot that we will use
+    geom_boxplot(outlier.shape = NA, alpha = 0.5) + scale_fill_manual(values = nice_palette) +                                         # The type of plot that we will use
     facet_grid(Z~S)  + xlim(0,1.5) +                                                                                     # Make several panels with specific limits
     ylab("Estimator") + xlab(Prf_M[i])  +                                                                                # The labels of each axis
     theme(text = element_text(size = 30),
@@ -973,7 +1002,7 @@ for (i in 1:length(Prf_M)){
   Plot_B <- Perf_Plot %>%
     filter((Z == "Cor(YZ) = 0.8" | is.na(Z)) & S == "Cor(YS) = 0.4" & !is.na(Alpha) & grepl(Prf_M[i], variable)) %>% # Selecting only the results that we want to plot
     ggplot(aes(x = value, y = fct_rev(M), fill = M)) +                                                                        # General aesthetic
-    geom_boxplot(outlier.shape = NA) + scale_fill_brewer(palette = "Spectral") +                                                  # The type of plot that we will use
+    geom_boxplot(outlier.shape = NA, alpha = 0.5) + scale_fill_manual(values = nice_palette) +                                                  # The type of plot that we will use
     facet_grid(Beta~Alpha, labeller = label_both) + xlim(0,1) +                                                     # Make several panels with specific limits
     ylab("Estimator") + xlab(Prf_M[i]) +                                                                             # The labels of each axis
     theme(text = element_text(size = 30),
@@ -987,7 +1016,7 @@ for (i in 1:length(Prf_M)){
   Plot_BS <- Perf_Plot %>%
     filter((Z == "Cor(YZ) = 0.8" | is.na(Z)) & !is.na(Alpha) & grepl(Prf_M[i], variable) & Beta == 1) %>% # Selecting only the results that we want to plot
     ggplot(aes(x = value, y = fct_rev(M), fill = M)) +                                                             # General aesthetic
-    geom_boxplot(outlier.shape = NA) + scale_fill_brewer(palette = "Spectral") +                                        # The type of plot that we will use
+    geom_boxplot(outlier.shape = NA, alpha = 0.5) + scale_fill_manual(values = nice_palette) +                                        # The type of plot that we will use
     facet_grid(S~Alpha, labeller = label_both) + xlim(0,5) +                                            # Make several panels with specific limits
     ylab("Estimator") + xlab(Prf_M[i]) +                                                                  # The labels of each axis
     theme(text = element_text(size = 30),
@@ -1002,7 +1031,7 @@ for (i in 1:length(Prf_M)){
     filter(S == "Cor(YS) = 0.4" & !is.na(Alpha) & !is.na(Z) & grepl(Prf_M[i], variable) & Beta == 1 &
              Z != "Cor(YZ) = 0.05"  & Z!= "Cor(YZ) = 0.95") %>%                              # Selecting only the results that we want to plot
     ggplot(aes(x = value, y = fct_rev(M), fill = M)) +                                                # General aesthetic
-    geom_boxplot(outlier.shape = NA) + scale_fill_brewer(palette = "Spectral") +                           # The type of plot that we will use
+    geom_boxplot(outlier.shape = NA, alpha = 0.5) + scale_fill_manual(values  = nice_palette) +                           # The type of plot that we will use
     facet_grid(Z~Alpha, labeller = label_both) + xlim(0,4) +                                # Make several panels with specific limits
     ylab("Estimator") + xlab(Prf_M[i]) +                                                     # The labels of each axis
     theme(text = element_text(size = 30),
@@ -1017,7 +1046,7 @@ for (i in 1:length(Prf_M)){
   Plot_B1_SZ <- Perf_Plot %>%
     filter(Z!= "Cor(YZ) = 0.05" & Z!= "Cor(YZ) = 0.95"  &  grepl("beta1", Y) & grepl(Prf_M[i], variable)) %>%       # Selecting only the results that we want to plot 
     ggplot(aes(x = value, y = fct_rev(M), fill = M)) +                                                          # General aesthetic
-    geom_boxplot(outlier.shape = NA) + scale_fill_brewer(palette = "Spectral") +                                         # The type of plot that we will use
+    geom_boxplot(outlier.shape = NA, alpha = 0.5) + scale_fill_manual(values = nice_palette) +                                         # The type of plot that we will use
     facet_grid(Z~S)  + xlim(0,5) +                                                                            # Make several panels with specific limits
     ylab("Estimator") + xlab(Prf_M[i])  +                                                                       # The labels of each axis
     theme(text = element_text(size = 30),
@@ -1031,7 +1060,7 @@ for (i in 1:length(Prf_M)){
   Plot_B13_SZ <- Perf_Plot %>%
     filter(Z!= "Cor(YZ) = 0.05" & Z!= "Cor(YZ) = 0.95"  &  grepl("beta16", Y) & grepl(Prf_M[i], variable)) %>%       # Selecting only the results that we want to plot 
     ggplot(aes(x = value, y = fct_rev(M), fill = M)) +                                                          # General aesthetic
-    geom_boxplot(outlier.shape = NA) + scale_fill_brewer(palette = "Spectral") +                                         # The type of plot that we will use
+    geom_boxplot(outlier.shape = NA, alpha = 0.5) + scale_fill_manual(values = nice_palette) +                                         # The type of plot that we will use
     facet_grid(Z~S)  + xlim(0,5) +                                                                            # Make several panels with specific limits
     ylab("Estimator") + xlab(Prf_M[i])  +                                                                       # The labels of each axis
     theme(text = element_text(size = 30),
@@ -1074,8 +1103,8 @@ save_kable(Tab_AvTr, file = "Table_Means_Z_tr.pdf")
 # True Selection
 AvRS <- RS[,,] %>% 
   abs() %>%            # Take the absolute value
-  colMeans() %>%       # Average across period
-  rowMeans() %>%       # Average across draw
+  colMeans(na.rm = T) %>%       # Average across period
+  rowMeans(na.rm = T) %>%       # Average across draw
   cbind(paste0("Cor(YS) = ", seq(from = 0.2, to = 0.8, by = 0.2))) %>% 
   as.data.frame() %>% 
   rename("RS" = 1 , "S" = 2)
@@ -1099,29 +1128,38 @@ for (j in 1:n_aux){
 
 
 AvRS_hat <- AvRS_hat %>% 
-  filter(M != "SMUB_f") %>% 
-  mutate(M = str_replace(M, "Meng_Z2", "Meng_Z2/SMUB_f")) %>% 
+  filter(M != "MUB_f") %>% 
+  mutate(M = str_replace(M, "Meng_Z2", "Meng_Z2/MUB_f")) %>% 
   mutate(M = factor(M, levels = Est2))
 
 AvRS_hat %>% 
   filter(Z != "Cor(YZ) = 0.05"  & Z!= "Cor(YZ) = 0.95") %>%
   ggplot(aes(x = fct_rev(M), y = as.numeric(RS), fill = M)) + 
-  geom_col() +
+  geom_col(alpha = 0.5) +
   facet_grid(Z~S) +
   coord_flip() +
   geom_hline(data =AvRS, aes(yintercept=abs(as.numeric(RS))), col = "blue", linetype = "dashed") +
   theme(text = element_text(size = 30), strip.background = element_blank(), strip.placement = "outside", legend.key.size = unit(1.5, 'cm'),
         axis.title.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank()) +
   ylab("Relative Selectivity") + xlab("Estimator")  + theme(text = element_text(size = 15)) +
-  scale_fill_brewer(palette="Spectral")
+  scale_fill_manual(values=nice_palette) 
 ggsave("Plot_AvSel.png", path = fold_graphs, width = 50, height = 50, units = "cm")
 
 # Estimated Selection
-TempTrAvRS_Z <- vector(mode = "list", length = n_Est)
-TrAvRS_hat <- data.frame(matrix(nrow = 0, ncol = 4))
+# True Selection
+AvRS_tr <- RS_tr[,,] %>% 
+  abs() %>%               # Take the absolute value
+  colMeans(na.rm = T) %>% # Average across draw
+  rowMeans(na.rm = T) %>% # Average across period
+  cbind(paste0("Cor(YS) = ", seq(from = 0.2, to = 0.8, by = 0.2))) %>% 
+  as.data.frame() %>% 
+  rename("RS" = 1 , "S" = 2)
+
+TempAvRS_Z_tr <- vector(mode = "list", length = n_Est)
+AvRS_hat_tr <- data.frame(matrix(nrow = 0, ncol = 4))
 for (j in 1:n_aux){
   for (i in 1:n_Est){
-    TempTrAvRS_Z[[i]] <- get(paste0("RS_hat_Z",j,"tr"))[[i]][,,] %>% 
+    TempAvRS_Z_tr[[i]] <- get(paste0("RS_hat_Z",j,"tr"))[[i]][,,] %>% 
       abs() %>%                        # Take the absolute value
       colMeans(na.rm = TRUE) %>%       # Average across period
       rowMeans(na.rm = TRUE) %>%       # Average across draw 
@@ -1130,24 +1168,51 @@ for (j in 1:n_aux){
       rename("RS" = 1 , "S" = 2) %>% 
       mutate(M = Est[i], Z = paste0("Cor(YZ) = ", cor_aux[j]))
   }
-  TrAvRS_hat <- rbind(TrAvRS_hat, bind_rows(TempTrAvRS_Z, .id = "column_label"))
+  AvRS_hat_tr <- rbind(AvRS_hat_tr, bind_rows(TempAvRS_Z_tr, .id = "column_label"))
 }
-TrAvRS_hat <- TrAvRS_hat %>% 
-  filter(M != "SMUB_f") %>% 
-  mutate(M = str_replace(M, "Meng_Z2", "Meng_Z2/SMUB_f")) %>% 
+AvRS_hat_tr <- AvRS_hat_tr %>% 
+  filter(M != "MUB_f") %>% 
+  mutate(M = str_replace(M, "Meng_Z2", "Meng_Z2/MUB_f")) %>% 
   mutate(M = factor(M, levels = Est2))
 
-TrAvRS_hat %>% 
+TempSeRS_Z_tr <- vector(mode = "list", length = n_Est)
+SeRS_hat_tr <- data.frame(matrix(nrow = 0, ncol = 4))
+
+# Check the number of observations
+
+for (j in 1:n_aux){
+ for (i in 1:n_Est){
+   TempSeRS_Z_tr[[i]] <- get(paste0("RS_hat_Z",j,"tr"))[[i]][,,] %>% 
+      abs() %>%                        # Take the absolute value
+      colMeans(na.rm = TRUE) %>%       # Average across period
+      rowSds(na.rm = TRUE) %>%       # Average across draw 
+      cbind(paste0("Cor(YS) = ", seq(from = 0.2, to = 0.8, by = 0.2))) %>% 
+      as.data.frame() %>% 
+      rename("RS" = 1 , "S" = 2) %>% 
+      mutate(M = Est[i], Z = paste0("Cor(YZ) = ", cor_aux[j]))
+  }
+  SeRS_hat_tr <- rbind(SeRS_hat_tr, bind_rows(TempSeRS_Z_tr, .id = "column_label"))
+}
+SeRS_hat_tr <- SeRS_hat_tr %>% 
+  filter(M != "MUB_f") %>% 
+  mutate(M = str_replace(M, "Meng_Z2", "Meng_Z2/MUB_f")) %>% 
+  mutate(M = factor(M, levels = Est2)) %>% 
+  mutate(RS = as.numeric(RS)/D)
+
+AvRS_hat_tr <- merge(x = AvRS_hat_tr, y = SeRS_hat_tr, by = c("S", "M", "Z"))
+
+AvRS_hat_tr %>% 
   filter(Z != "Cor(YZ) = 0.05"  & Z!= "Cor(YZ) = 0.95") %>%
-  ggplot(aes(x = fct_rev(M), y = as.numeric(RS), fill = M)) + 
-  geom_col() +
+  ggplot(aes(x = fct_rev(M), y = as.numeric(RS.x), fill = M)) + 
+  geom_col(alpha = 0.5) +
+  geom_errorbar(aes(ymin =as.numeric(RS.x)-RS.y, ymax = as.numeric(RS.x)+RS.y, width = 0.5)) +
   facet_grid(Z~S) +
   coord_flip() +
-  geom_hline(data = AvRS, aes(yintercept=abs(as.numeric(RS))), col = "blue", linetype = "dashed") +
+  geom_hline(data = AvRS_tr, aes(yintercept=abs(as.numeric(RS))), col = "blue", linetype = "dashed") +
   theme(text = element_text(size = 30), strip.background = element_blank(), strip.placement = "outside", legend.key.size = unit(1.5, 'cm'),
         axis.title.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank()) +
   ylab("Relative Selectivity") + xlab("Estimator")  + theme() +
-  scale_fill_brewer(palette="Spectral")
+  scale_fill_manual(values = nice_palette)
 ggsave("Plot_AvSel_Tr.png", path = fold_graphs, width = 50, height = 50, units = "cm")
 
 # True Selection
@@ -1176,27 +1241,27 @@ for (j in 1:n_aux){
   MedRS_hat <- rbind(MedRS_hat, bind_rows(TempMedRS_Z, .id = "column_label"))
 }
 MedRS_hat <- MedRS_hat %>% 
-  filter(M != "SMUB_f") %>% 
-  mutate(M = str_replace(M, "Meng_Z2", "Meng_Z2/SMUB_f")) %>% 
+  filter(M != "MUB_f") %>% 
+  mutate(M = str_replace(M, "Meng_Z2", "Meng_Z2/MUB_f")) %>% 
   mutate(M = factor(M, levels = Est2))
 
 MedRS_hat %>% 
   filter(Z != "Cor(YZ) = 0.05"  & Z!= "Cor(YZ) = 0.95") %>%
   ggplot(aes(x = fct_rev(M), y = as.numeric(RS), fill = M)) + 
-  geom_col() +
+  geom_col(alpha = 0.5) +
   facet_grid(Z~S) +
   coord_flip() +
   geom_hline(data = MedRS, aes(yintercept=abs(as.numeric(RS))), col = "blue", linetype = "dashed") +
   theme(text = element_text(size = 30), strip.background = element_blank(), strip.placement = "outside", legend.key.size = unit(1.5, 'cm'),
         axis.title.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank()) +
   ylab("Relative Selectivity") + xlab("Estimator")  +
-  scale_fill_brewer(palette="Spectral")
+  scale_fill_manual(values = nice_palette)
 ggsave("Plot_MedSel.png", path = fold_graphs, width = 50, height = 50, units = "cm")
 
 # (RS_hat - RS)  vs. MAD/RMSD
 
-AvS <- merge(AvRS, TrAvRS_hat, by = "S", suffixes = c(".true", ".hat")) %>% 
-  mutate(dif_Sel = abs(as.numeric(RS.hat) - as.numeric(RS.true))) 
+AvS <- merge(AvRS, AvRS_hat_tr, by = "S") %>% 
+  mutate(dif_Sel = abs(as.numeric(RS.y) - as.numeric(RS.x))) 
 
 for (i in 1:length(Prf_M)){
  Plot_SP <- Perf_Plot %>% 
@@ -1205,8 +1270,8 @@ for (i in 1:length(Prf_M)){
   summarize(mean_perf = mean(value, na.rm = TRUE)) %>% 
   merge(AvS, by = c("S", "Z", "M")) %>% 
   ggplot(aes(x = dif_Sel, y = mean_perf, color = M)) + 
-  geom_point(size = 3) + ylab(Prf_M[i]) + xlab("abs(mean(RS_hat) - mean(RS_true))") +
-  facet_grid(Z~S) + scale_color_brewer(palette="Spectral")
+  geom_point(size = 3, alpha = 0.5) + ylab(Prf_M[i]) + xlab("abs(mean(RS_hat) - mean(RS_true))") +
+  facet_grid(Z~S) + scale_color_manual(values = nice_palette)
 ggsave(paste0("Plot_RS_", Prf_M[i], ".png"), plot = Plot_SP, path = fold_graphs, width = 30, height = 30, units = "cm")
 }
 
@@ -1224,13 +1289,82 @@ Perf_d <- merge(MAD_d[,c("S", "Z", "M", "draw", "value")], RMSD_d[,c("S", "Z", "
   group_by(S, Z, M) %>% 
   summarize(MAD = mean(value_MAD, na.rm = TRUE), RMSD = mean(value_RMSD, na.rm = TRUE)) %>% 
   ggplot(aes(x = MAD, y = RMSD, color = M)) + 
-  geom_point(size = 3) + ylab("RMSD") + xlab("MAD") + scale_color_brewer(palette="Spectral") +
+  geom_point(size = 3, alpha = 0.5) + ylab("RMSD") + xlab("MAD") + scale_color_manual(values = nice_palette) +
   facet_grid(Z~S) + 
   theme(text = element_text(size = 20),
         axis.text.y=element_blank(),
         axis.ticks.y=element_blank(),
         legend.key.size = unit(2, 'cm'))    
 ggsave(paste0("MAD_RMSD.png"), plot = Perf_d, path = fold_graphs, width = 40, height = 40, units = "cm")
+
+# Plot phi
+
+Est_SMUB <- c("MUB_ht","MUB_ha", "MUB_wt", "MUB_wa", "MUB_mt", "MUB_ma")
+n_Est_SMUB <- length(Est_SMUB)
+Cor_YS_names <- paste0("Cor(YS) = ", c(0.2, 0.4, 0.6, 0.8))
+Cor_YZ_names <- paste0("Cor(YZ) = ", cor_aux)
+
+Phi_hat <- vector(mode = "list", length = D)
+Phi <- vector(mode = "list", length = D)
+
+for (d in 1:D){
+  # Estimate
+  phi_hat_mat <- mPerf %>% 
+    filter(grepl("MUB", M) &  !grepl("MUB_f", M) &  grepl("Y", Y)) %>%
+    select(S, M, Z) %>% 
+    distinct()
+  phi_hat_mat <- cbind(phi_hat_mat, matrix(data = NA, nrow = nrow(phi_hat_mat), ncol = Time))
+  colnames(phi_hat_mat) <- c("S", "M", "Z", paste0("phi",1:10))
+  # Real
+  phi_mat <- phi_hat_mat %>% 
+    select(S,Z) %>% 
+    distinct()
+  phi_mat <- cbind(phi_mat, matrix(data = NA, nrow = nrow(phi_mat), ncol = Time))
+  colnames(phi_mat) <- c("S", "Z", paste0("phi",1:10))
+  
+  for (cs in 1:n_sel){
+    for (cz in 1:n_aux){
+      for (m in 1:n_Est_SMUB){
+        Y_temp <- as.matrix(Y[,,d])                       # Y matrix                                               
+        S_temp <- as.matrix(S[[cs]][,,d])                 # S matrix                                   
+        Z_temp <- Z[[cz]][,,d]                            # Z matrix
+        
+        # Estimate
+        phi_hat_mat[(phi_hat_mat$S==Cor_YS_names[cs] & 
+                       phi_hat_mat$Z==Cor_YZ_names[cz] & 
+                       phi_hat_mat$M==Est_SMUB[m]),4:13] <- get(Est_SMUB[m])(Y_temp, S_temp, Z_temp)[[2]] 
+      }
+      phi_mat[(phi_mat$S==Cor_YS_names[cs] & 
+                     phi_mat$Z==Cor_YZ_names[cz]),3:12] <- get(Est_SMUB[1])(Y_temp, S_temp, Z_temp)[[3]] 
+    }
+  }
+  Phi_hat[[d]] <- phi_hat_mat
+  Phi[[d]] <- phi_mat
+  rm(phi_hat_mat, phi_mat)
+}
+
+Phi_av <- bind_rows(Phi, .id ="D") %>% 
+  group_by(S, Z) %>% 
+  summarise(across(phi1:phi10, mean)) %>% 
+  mutate(M = "Obs.")
+
+Phi_av <- bind_rows(Phi_hat, .id ="D") %>% 
+  group_by(S, M, Z) %>% 
+  summarise(across(phi1:phi10, mean)) %>% 
+  rbind(Phi_av)
+
+Plot_phi <- Phi_av %>% 
+  pivot_longer(cols = starts_with("phi"), names_to = "period", values_to = "phi") %>% 
+  mutate(period = str_replace(period, "phi", "")) %>% 
+  ggplot(aes(x = as.numeric(period), y = phi, group = M)) +
+  geom_line(aes(col=M)) + xlab("Period") + xlim(2,10) + ylim (0,1.5) +
+  facet_grid(Z~S) +
+  theme(text = element_text(size = 10),
+        legend.key.size = unit(1.5, 'cm'))     
+Plot_phi
+ggsave("Phi_hat_by_t.png", plot = Plot_phi, path = fold_graphs, width = 40, height = 40, units = "cm")
+
+# Plot r_YS (?), sigma_Y and sigma_Z over time
 
 #### - (VII*) Checks - ####
 # This last section of the code is to be able to make some rapid checks given certain parameters. It's important to note that the 
