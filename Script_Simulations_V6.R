@@ -1,7 +1,7 @@
 ##-----------------------------------------##
 ## Simulation on Selection Bias Estimators ##
 ## Written by: Santiago Gómez-Echeverry    ##
-## Last update: 03/06/2024                 ##
+## Last update: 08/01/2025                 ##
 ##-----------------------------------------##
 
 #### - (I) Working space and packages - ####
@@ -20,7 +20,7 @@ setwd(fold_code) # For the moment, let us work on the code folder
 # Below are all the packages that we will use in the analyses. We will check if they are installed, install them if they
 # are not, and finally load them. Note: dutchmasters is installed from github
 packages <- c('ggplot2', 'ggpubr', 'forecast', 'reshape2', 'MASS', 'corpcor', 'ggridges', 'ltm', 'stringr', 'knitr', 'kableExtra', 'tidyr', 'dplyr',
-              'robustbase', 'forcats', 'cols4all', 'matrixStats', 'progress', 'ggh4x')
+              'robustbase', 'forcats', 'cols4all', 'scales','matrixStats', 'progress', 'ggh4x')
 
 # Installing the packages
 installed_packages <- packages %in% rownames(installed.packages())
@@ -45,7 +45,9 @@ colMed <- function(array){
   return(mat_array)
 }
 
-nice_palette <- c4a(palette = "brewer.paired", n = 11)
+nice_palette <- c4a("carto.pastel", n = 11)
+nice_palette <- c(nice_palette[1:7], nice_palette[11])
+#nice_palette <- c4a(palette = "brewer.paired", n = 11)
 
 #### - (II) Selection Bias Estimators - ####
 
@@ -215,7 +217,7 @@ set.seed(42)
 mu <- 0
 sigma <- 1
 N <- 1000
-Time <- 10
+Time <- 12
 D <- 300
 const <- rnorm(n = 1, mean = 0, sd = 1)
 epsilon_0 <- matrix(data = rnorm(n = N*D, mean = 0, sd = 1), nrow = N, ncol = D)
@@ -271,7 +273,35 @@ ggplot(m_bt0_d1, aes(value)) + geom_density(color = "darkslategray4") +
   geom_histogram(aes(y = after_stat(density)), bindwidth = 0.05, color = "darkslategray4", fill = "darkslategray3") +
   facet_grid(b~a, labeller = label_bquote(rows = beta:.(b), col = alpha:.(a))) + ylab("Density") + xlab("Value") + theme(text = element_text(size = 20))
   theme(strip.background = element_blank(), strip.placement = "outside")
-#ggsave(filename = "Betas.png", path = fold_graphs, width = 30, height = 30, units = "cm")
+ggsave(filename = "Betas.png", path = fold_graphs, width = 30, height = 30, units = "cm")
+
+custom_labels <- c(
+    `1.1` = expression(alpha == 1 ~ beta == 1),
+    `1.2` = expression(alpha == 1 ~ beta == 2),
+    `1.3` = expression(alpha == 1 ~ beta == 3),
+    `1.4` = expression(alpha == 1 ~ beta == 4)
+  )
+m_bt0_d1 %>% 
+  filter(a==1) %>%   
+  ggplot(aes(value, color = interaction(a, b))) + 
+    geom_density(size = 1) + 
+    scale_color_manual(
+      values = hue_pal()(4),
+      labels = custom_labels,
+      guide = guide_legend(title = NULL)
+    ) +
+    ylab("Density") + 
+    xlab("Value") + 
+    theme_minimal(base_size = 20) +
+    theme(
+      legend.title = element_blank(),
+      legend.position = "right",
+      legend.key.size = unit(2, 'cm'),  
+      strip.background = element_blank(),
+      strip.placement = "outside"
+    )  
+ggsave(filename = "Betas2.png", path = fold_graphs, width = 30, height = 30, units = "cm")    
+  
 
 # (iii) Auxiliary variable
 
@@ -448,17 +478,17 @@ for (i in 1:n_est){
   rsv[[i]] <- get(res)(Yt, St, Et)[[2]]
   ck <- abs(Et - colMeans(yt, na.rm = TRUE))<0.3
   if (any(ck == T, na.rm = T)){
-    v_tr[[i]] <- NA; rsv_tr[[i]] <- rep(NA, 10)
+    v_tr[[i]] <- NA; rsv_tr[[i]] <- rep(NA, Time)
   } else{
     v_tr[[i]] <- v[[i]]; rsv_tr[[i]] <- rsv[[i]]
   }
 }
 perf <- cbind(perf, "value"= as.vector(unlist(v)))
-rsh <- cbind(rsh, matrix(unlist(rsv), ncol = 10, byrow = T))
-names(rsh)[10:19] <- paste0("RS", 1:10)
+rsh <- cbind(rsh, matrix(unlist(rsv), ncol = Time, byrow = T))
+names(rsh)[10:21] <- paste0("RS", 1:Time)
 perf_tr <- cbind(perf_tr, "value" = as.vector(unlist(v_tr)))
-rsh_tr <- cbind(rsh_tr, matrix(unlist(rsv_tr), ncol = 10, byrow = T))
-names(rsh_tr)[10:19] <- paste0("RS", 1:10)
+rsh_tr <- cbind(rsh_tr, matrix(unlist(rsv_tr), ncol = Time, byrow = T))
+names(rsh_tr)[10:21] <- paste0("RS", 1:Time)
 rm(v, rsv, v_tr, rsv_tr)
 
 perf <- perf %>% 
@@ -508,18 +538,18 @@ for (i in 1:n_rs){
   rsv[[i]] <- MAD(Yt, St, Et)[[1]]
   ck <- abs(Et - colMeans(yt, na.rm = TRUE))<0.3
   if (any(ck == T, na.rm = T)){
-    rsv_tr[[i]] <- rep(NA, 10)
+    rsv_tr[[i]] <- rep(NA, Time)
   } else {
     rsv_tr[[i]] <- rsv[[i]]
   }
 }
 
-rs <- cbind(rs, matrix(unlist(rsv), ncol = 10, byrow = T))
+rs <- cbind(rs, matrix(unlist(rsv), ncol = Time, byrow = T))
 rs <- rs[rs$Z==1, -2]
-names(rs)[7:16] <- paste0("RS", 1:10)
-rs_tr <- cbind(rs_tr, matrix(unlist(rsv_tr), ncol = 10, byrow = T))
+names(rs)[7:18] <- paste0("RS", 1:Time)
+rs_tr <- cbind(rs_tr, matrix(unlist(rsv_tr), ncol = Time, byrow = T))
 rs_tr <- rs_tr[rs_tr$Z==1, -2]
-names(rs_tr)[7:16] <- paste0("RS", 1:10)
+names(rs_tr)[7:18] <- paste0("RS", 1:Time)
 
 rs <- rs %>% 
   mutate(S = fct_recode(factor(S), "0.2"="1", "0.4"="2", "0.6"="3", "0.8"="4"))
@@ -691,7 +721,7 @@ d <- 90
 cs <- 1
 cz <- 6
 b <- 14
-Ye <- as.matrix(Y[,,d])                 # Y matrix                                               
+Ye <- as.matrix(Y[,,d])                       # Y matrix                                               
 Se <- as.matrix(S[[cs]][,,d])                 # S matrix                                   
 Ze <- as.matrix(Z[[cz]][,,d])                 # Z matrix
 ye <- Ye*Se; ye[ye==0] <- NA
