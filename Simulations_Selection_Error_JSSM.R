@@ -608,7 +608,7 @@ for (i in 1:length(mres)){
   p_sz <- perf_plot %>% 
     filter(Z!=0.05 & Z!=0.95 & Y=="Y" & grepl(mres[i], res)) %>% 
     ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5, outlier.shape = NA) + scale_fill_manual(values = nice_palette) +
+    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
     ggh4x::facet_grid2(Z~S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = rho[YS]:.(S))) + ylab("") + xlab(mres[i]) +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
           axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
@@ -619,7 +619,7 @@ for (i in 1:length(mres)){
   p_sz_e <- perf_plot %>% 
     filter(Z!=0.2 & Z!=0.8 & Y=="Y" & grepl(mres[i], res)) %>% 
     ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.7, outlier.shape = NA) + scale_fill_manual(values = nice_palette) +
+    geom_boxplot(alpha = 0.7) + scale_fill_manual(values = nice_palette) +
     ggh4x::facet_grid2(Z~S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = rho[YS]:.(S))) + ylab("") + xlab(mres[i]) +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
           axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
@@ -629,7 +629,7 @@ for (i in 1:length(mres)){
   p_b <- perf_plot %>% 
     filter(Z==0.8 & S==0.6 & Y=="Beta" & grepl(mres[i], res)) %>% 
     ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5, outlier.shape = NA) + scale_fill_manual(values = nice_palette) +
+    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
     ggh4x::facet_grid2(b~a, scales = "free", independent = "all", labeller = label_bquote(rows = beta:.(b), col = alpha:.(a))) + ylab("") + xlab(mres[i]) +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
         axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
@@ -639,7 +639,7 @@ for (i in 1:length(mres)){
   p_bs <- perf_plot %>% 
     filter(Z==0.8 & !is.na(a) & grepl(mres[i], res) & b==1) %>% 
     ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5, outlier.shape = NA) + scale_fill_manual(values = nice_palette) +
+    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
     ggh4x::facet_grid2(S~a, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YS]:.(S), col = alpha:.(a))) + ylab("") + xlab(mres[i]) +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
         axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
@@ -649,7 +649,7 @@ for (i in 1:length(mres)){
   p_bz <- perf_plot %>% 
     filter(S==0.4 & Z!=0.05 & Z!=0.95 & !is.na(a) & grepl(mres[i], res) & b==1) %>% 
     ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5, outlier.shape = NA) + scale_fill_manual(values = nice_palette) +
+    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
     ggh4x::facet_grid2(Z~a, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = alpha:.(a))) + ylab("") + xlab(mres[i])  +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
           axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
@@ -659,7 +659,7 @@ for (i in 1:length(mres)){
   p_b1_sz <- perf_plot %>% 
     filter(Z!=0.05 & Z!=0.95 & !is.na(a) & grepl(mres[i], res) & beta==1) %>% 
     ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5, outlier.shape = NA) + scale_fill_manual(values = nice_palette) +
+    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
     ggh4x::facet_grid2(Z~S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = rho[YS]:.(S))) + ylab("") + xlab(mres[i])  +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
           axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
@@ -669,7 +669,7 @@ for (i in 1:length(mres)){
   p_b13_sz <- perf_plot %>% 
     filter(Z!=0.05 & Z!=0.95 & !is.na(a) & grepl(mres[i], res) & beta==13) %>% 
     ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5, outlier.shape = NA) + scale_fill_manual(values = nice_palette) +
+    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
     ggh4x::facet_grid2(Z~S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = rho[YS]:.(S))) + ylab("") + xlab(mres[i])  +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
           axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
