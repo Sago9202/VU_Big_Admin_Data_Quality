@@ -1,7 +1,7 @@
 ##-----------------------------------------##
 ## Simulation on Selection Bias Estimators ##
 ## Written by: Santiago Gómez-Echeverry    ##
-## Last update: 08/01/2025                 ##
+## Last update: 29/01/2025                 ##
 ##-----------------------------------------##
 
 #### - (I) Working space and packages - ####
@@ -20,7 +20,7 @@ setwd(fold_code) # For the moment, let us work on the code folder
 # Below are all the packages that we will use in the analyses. We will check if they are installed, install them if they
 # are not, and finally load them. Note: dutchmasters is installed from github
 packages <- c('ggplot2', 'ggpubr', 'forecast', 'reshape2', 'MASS', 'corpcor', 'ggridges', 'ltm', 'stringr', 'knitr', 'kableExtra', 'tidyr', 'dplyr',
-              'robustbase', 'forcats', 'cols4all', 'scales','matrixStats', 'progress', 'ggh4x')
+              'robustbase', 'forcats', 'cols4all', 'scales','matrixStats', 'progress', 'ggh4x', 'VGAM')
 
 # Installing the packages
 installed_packages <- packages %in% rownames(installed.packages())
@@ -225,34 +225,68 @@ epsilon_0 <- matrix(data = rnorm(n = N*D, mean = 0, sd = 1), nrow = N, ncol = D)
 # (ii) Outcome variable
 
 # 1. Normal distribution
-
 Y <- array(data = NA, dim = c(N, Time, D))
-fy <- matrix(data = rnorm(n = N*D, mean =mu, sd = sigma), nrow = N, ncol = D)
-e <- matrix(data = rnorm(n = N*D, mean = 0, sd = 1), nrow = N, ncol = D)
-Y[,1,] <- 0.04 + fy + e
-psi <- runif(n = D, min = -1, max = 1)
+e <- array(data = rnorm(n = N * Time * D, mean = 0, sd = sigma), dim = c(N, Time, D))
+Y[, 1, ] <- rnorm(n = N * D, mean = 0, sd = sigma)  # Random initialization
+psi <- runif(n = D, min = 0, max = 1)
 for (p in 2:Time){
-  Y[,p,] <- const + psi*Y[,p-1,] + fy + 0.02*p  +  e
+  Y[,p,] <- const + psi*Y[,p-1,] + e[,p,]
 }
 dimnames(Y)[[2]] <- paste0("Y", c(1:Time))
 mean(Y[,1,1])
 mean(Y[,6,1])
 
-# 2. Beta distribution
+## Check the cor(Y^{t}, Y^{t-1})
 
-ab <- expand.grid(1:4, 1:4)
-colnames(ab) <- c("a", "b")
-n_betas <- nrow(ab)
-bt <- vector(mode = "list", length = n_betas)
-bt0 <- array(data = matrix(data = NA, nrow = N, ncol = nrow(ab)), dim = c(N, n_betas, D))
-for (b in 1:n_betas){
-  bt[[b]] <- array(data = NA, dim = c(N, Time, D))
-  bt[[b]][,1,] <- bt0[,b,] <- matrix(data = rbeta(n = N*D, shape1 = ab[b,1], shape2 = ab[b,2]), nrow = N, ncol = D)
-  for (p in 2:Time){
-    bt[[b]][,p,] <- const + psi*bt[[b]][,p-1,] + rnorm(n = N, mean = 0, sd = 1)
-  }
-  dimnames(bt[[b]])[[2]] <- paste0("B", c(1:Time))
+Cors <- numeric(dim(Y)[3])
+for (d in 1:length(Cors)){
+  cor_matrix <- cor(Y[,,d],Y[,,d])
+  cor_t <- diag(cor_matrix[-1, -ncol(cor_matrix)])
+  Cors[d] <- mean(cor_t, na.rm = T)
 }
+
+# Print the result
+cat("The average cor(Y_t, Y_t-1) is:", mean(Cors), "\n") 
+
+# 2. Beta distribution
+ab <- expand.grid(1:4, 1:4)
+colnames(ab) <- c("alpha", "beta")
+n_betas <- nrow(ab)
+
+# Store results
+bt <- vector(mode = "list", length = n_betas)
+bt0 <- array(data = NA, dim = c(N, n_betas, D))
+
+# Generate the Beta AR(1) Process
+for (b in 1:n_betas) {
+  bt[[b]] <- array(data = NA, dim = c(N, Time, D))
+  
+  # Initialize first period from Beta(alpha, beta)
+  bt[[b]][,1,] <- bt0[,b,] <- matrix(rbeta(N * D, shape1 = ab[b,1], shape2 = ab[b,2]), nrow = N, ncol = D)
+  
+  # Convert first period to logit scale
+  Z_t <- qlogis(bt[[b]][,1,])  # Logit transformation
+  
+  for (t in 2:Time) {
+    # AR(1) process in logit space
+    epsilon_t <- rnorm(N, mean = 0, sd = 0.1)  # Small noise in latent space
+    Z_t <- psi * Z_t + epsilon_t  # AR(1) update in logit scale
+    
+    # Transform back to Beta space
+    bt[[b]][,t,] <- plogis(Z_t)  # Inverse logit transformation
+  }
+}
+
+# Compute empirical correlation cor(X_t, X_{t-1})
+Cors <- numeric(D)
+for (d in 1:D) {
+  X_draw <- bt[[1]][,,d]  # Extract one series
+  cor_values <- apply(X_draw, 1, function(b) cor(b[-1], b[-length(b)]))
+  Cors[d] <- mean(cor_values, na.rm = TRUE)
+}
+
+# Print average empirical correlation
+cat("The average empirical cor(X_t, X_t-1) is:", mean(Cors), "\n")
 
 # Let's plot the variables at the first period and draw and get the skewness and kurtosis
 
@@ -322,7 +356,6 @@ corZ <- function(Y, rho){
 
 cor_aux <- c(0.05, 0.2, 0.4, 0.6, 0.8, 0.95)
 n_aux <- length(cor_aux)
-
 
 # 1. Normal distribution
 Z <- vector(mode = "list", length = n_aux)
@@ -436,6 +469,7 @@ for (b in 1:n_betas){
     print(colMeans(corBS))
   }
 }
+
 
 #### - (V) Estimations - ####
 
@@ -574,7 +608,7 @@ for (i in 1:length(mres)){
   p_sz <- perf_plot %>% 
     filter(Z!=0.05 & Z!=0.95 & Y=="Y" & grepl(mres[i], res)) %>% 
     ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
+    geom_boxplot(alpha = 0.5, outlier.shape = NA) + scale_fill_manual(values = nice_palette) +
     ggh4x::facet_grid2(Z~S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = rho[YS]:.(S))) + ylab("") + xlab(mres[i]) +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
           axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
@@ -585,7 +619,7 @@ for (i in 1:length(mres)){
   p_sz_e <- perf_plot %>% 
     filter(Z!=0.2 & Z!=0.8 & Y=="Y" & grepl(mres[i], res)) %>% 
     ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.7) + scale_fill_manual(values = nice_palette) +
+    geom_boxplot(alpha = 0.7, outlier.shape = NA) + scale_fill_manual(values = nice_palette) +
     ggh4x::facet_grid2(Z~S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = rho[YS]:.(S))) + ylab("") + xlab(mres[i]) +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
           axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
@@ -595,7 +629,7 @@ for (i in 1:length(mres)){
   p_b <- perf_plot %>% 
     filter(Z==0.8 & S==0.6 & Y=="Beta" & grepl(mres[i], res)) %>% 
     ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
+    geom_boxplot(alpha = 0.5, outlier.shape = NA) + scale_fill_manual(values = nice_palette) +
     ggh4x::facet_grid2(b~a, scales = "free", independent = "all", labeller = label_bquote(rows = beta:.(b), col = alpha:.(a))) + ylab("") + xlab(mres[i]) +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
         axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
@@ -605,7 +639,7 @@ for (i in 1:length(mres)){
   p_bs <- perf_plot %>% 
     filter(Z==0.8 & !is.na(a) & grepl(mres[i], res) & b==1) %>% 
     ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
+    geom_boxplot(alpha = 0.5, outlier.shape = NA) + scale_fill_manual(values = nice_palette) +
     ggh4x::facet_grid2(S~a, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YS]:.(S), col = alpha:.(a))) + ylab("") + xlab(mres[i]) +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
         axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
@@ -615,7 +649,7 @@ for (i in 1:length(mres)){
   p_bz <- perf_plot %>% 
     filter(S==0.4 & Z!=0.05 & Z!=0.95 & !is.na(a) & grepl(mres[i], res) & b==1) %>% 
     ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
+    geom_boxplot(alpha = 0.5, outlier.shape = NA) + scale_fill_manual(values = nice_palette) +
     ggh4x::facet_grid2(Z~a, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = alpha:.(a))) + ylab("") + xlab(mres[i])  +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
           axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
@@ -625,7 +659,7 @@ for (i in 1:length(mres)){
   p_b1_sz <- perf_plot %>% 
     filter(Z!=0.05 & Z!=0.95 & !is.na(a) & grepl(mres[i], res) & beta==1) %>% 
     ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
+    geom_boxplot(alpha = 0.5, outlier.shape = NA) + scale_fill_manual(values = nice_palette) +
     ggh4x::facet_grid2(Z~S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = rho[YS]:.(S))) + ylab("") + xlab(mres[i])  +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
           axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
@@ -635,7 +669,7 @@ for (i in 1:length(mres)){
   p_b13_sz <- perf_plot %>% 
     filter(Z!=0.05 & Z!=0.95 & !is.na(a) & grepl(mres[i], res) & beta==13) %>% 
     ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
+    geom_boxplot(alpha = 0.5, outlier.shape = NA) + scale_fill_manual(values = nice_palette) +
     ggh4x::facet_grid2(Z~S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = rho[YS]:.(S))) + ylab("") + xlab(mres[i])  +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
           axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
