@@ -1,7 +1,7 @@
 ##-----------------------------------------##
 ## Simulation on Selection Bias Estimators ##
 ## Written by: Santiago Gómez-Echeverry    ##
-## Last update: 29/01/2025                 ##
+## Last update: 19/05/2025                 ##
 ##-----------------------------------------##
 
 #### - (I) Working space and packages - ####
@@ -46,23 +46,37 @@ colMed <- function(array){
 }
 
 nice_palette <- c4a("carto.pastel", n = 11)
-nice_palette <- c(nice_palette[1:7], nice_palette[11])
+nice_palette <- c(nice_palette[1:6], nice_palette[11])
 #nice_palette <- c4a(palette = "brewer.paired", n = 11)
+
+compute_phi <- function(rho_XS, rho_XZ, rho_ZS) {
+  num <- rho_XS - rho_XZ * rho_ZS
+  denom <- (rho_XS - rho_XZ * rho_ZS) + (rho_ZS - rho_XZ * rho_XS)
+  return(num / denom)
+}
+
+safe_cor <- function(x, y){
+  if (sum(!is.na(x) & !is.na(y)) >= 2) {
+    return(cor(x, y, use = "pairwise.complete.obs"))
+  } else {
+    return(NA)
+  }
+}
 
 #### - (II) Selection Bias Estimators - ####
 
-# 1. DDP_h 
+# 1. DDP_L
 
-DDP_h <- function(Y, S, Z){
+DDP_L <- function(Y, S, Z){
   P <- ncol(Y)
   N <- apply(Y, 2, length)
   n <- apply(S, 2, sum)  
-  ys <- Y*S; ys[ys==0] <- NA
+  ys <- ifelse(S == 1, Y, NA)
   r_ys <- mapply(cor, as.data.frame(Y), as.data.frame(S))
   sigma_y <- apply(Y, 2, p.sd)
   Yl <- (cbind(rep(NA, times = nrow(Y)), Y[,-P]))
   Sl <- (cbind(rep(NA, times = nrow(S)), S[,-P]))
-  ysl <- Yl*S; ysl[ysl==0] <- NA
+  ysl <- ifelse(S == 1, Yl, NA)
   r_ys_hat <- mapply(cor, as.data.frame(Yl), as.data.frame(Sl))
   sigma_y_hat <- apply(Yl, 2, p.sd)*(colSds(ys, na.rm = T)/colSds(ysl, na.rm = T))
   # Threefold decomposition
@@ -70,70 +84,62 @@ DDP_h <- function(Y, S, Z){
   D_U <- sigma_y_hat
   D_O <- sqrt((N-n)/n)
   S_Meng <- D_I*D_U*D_O
-  res <- list(S_Meng, D_I, D_U, D_O, r_ys)
+  res <- list(S_Meng = S_Meng, D_I = D_I, D_U = D_U, D_O = D_O, r_ys = r_ys)
   return(res)
 }
 
-# 2. MUB_a
+# 2. MUB_C.5
 
-MUB_a.3 <- function(Y, S, Z){
-  P <- ncol(Yt)
-  ys <- Yt*St; ys[ys==0] <- NA
-  zs <- Zt*St; zs[zs==0] <- NA
-  dy <- (colMeans(ys, na.rm = T) - colMeans(Yt))/colSds(Yt)
-  dz <- (colMeans(zs, na.rm = T) - colMeans(Zt))/colSds(Zt)
-  r_yz <- mapply(cor, na.omit(as.data.frame(ys)), na.omit(as.data.frame(zs)))
-  phi <- (dy - r_yz*dz)/((dy - r_yz*dz) + (dz - r_yz*dy))
-  phi_hat <- 0.3
-  g_hat <- (phi_hat + (1-phi_hat)*r_yz)/(phi_hat*r_yz + (1-phi_hat))
-  c_obs <- colSds(ys, na.rm = T)/colSds(Z)
-  S_MUB <- g_hat*c_obs*(colMeans(zs, na.rm = T) - colMeans(Z))
-  res <- list(S_MUB, phi_hat, phi)
-  return(res)
-}
-
-MUB_a.5 <- function(Y, S, Z){
+MUB_C.5 <- function(Y, S, Z, M = 200){
   P <- ncol(Y)
-  ys <- Y*S; ys[ys==0] <- NA
-  zs <- Z*S; zs[zs==0] <- NA
+  ys <- ifelse(S==1, Y, NA)
+  zs <- ifelse(S==1, Z, NA)
+  #True values
   dy <- (colMeans(ys, na.rm = T) - colMeans(Y))/colSds(Y)
   dz <- (colMeans(zs, na.rm = T) - colMeans(Z))/colSds(Z)
-  r_yz <- mapply(cor, na.omit(as.data.frame(ys)), na.omit(as.data.frame(zs)))
+  r_yz <- mapply(safe_cor, as.data.frame(ys), as.data.frame(zs)) # We need the safecor because of the NA's
+  r_zs <- mapply(cor, as.data.frame(Z), as.data.frame(S))
   phi <- (dy - r_yz*dz)/((dy - r_yz*dz) + (dz - r_yz*dy))
   phi_hat <- 0.5
   g_hat <- (phi_hat + (1-phi_hat)*r_yz)/(phi_hat*r_yz + (1-phi_hat))
   c_obs <- colSds(ys, na.rm = T)/colSds(Z)
   S_MUB <- g_hat*c_obs*(colMeans(zs, na.rm = T) - colMeans(Z))
-  res <- list(S_MUB, phi_hat, phi)
+  res <- list(S_MUB = S_MUB, phi_hat = phi_hat, phi = phi)
   return(res)
 }
 
-MUB_a.8 <- function(Y, S, Z){
+# 3. MUB_C
+
+MUB_C <- function(Y, S, Z, M = 200){
   P <- ncol(Y)
-  ys <- Y*S; ys[ys==0] <- NA
-  zs <- Z*S; zs[zs==0] <- NA
+  ys <- ifelse(S==1, Y, NA)
+  zs <- ifelse(S==1, Z, NA)
+  #True values
   dy <- (colMeans(ys, na.rm = T) - colMeans(Y))/colSds(Y)
   dz <- (colMeans(zs, na.rm = T) - colMeans(Z))/colSds(Z)
-  r_yz <- mapply(cor, na.omit(as.data.frame(ys)), na.omit(as.data.frame(zs)))
+  r_yz <- mapply(safe_cor, as.data.frame(ys), as.data.frame(zs)) # We need the safecor because of the NA's
+  r_zs <- mapply(cor, as.data.frame(Z), as.data.frame(S))
   phi <- (dy - r_yz*dz)/((dy - r_yz*dz) + (dz - r_yz*dy))
-  phi_hat <- 0.8
+  phi_hat <- matrix(runif(M*P), ncol = P, nrow = M)
   g_hat <- (phi_hat + (1-phi_hat)*r_yz)/(phi_hat*r_yz + (1-phi_hat))
   c_obs <- colSds(ys, na.rm = T)/colSds(Z)
-  S_MUB <- g_hat*c_obs*(colMeans(zs, na.rm = T) - colMeans(Z))
-  res <- list(S_MUB, phi_hat, phi)
+  MUB <- g_hat*c_obs*(colMeans(zs, na.rm = T) - colMeans(Z))
+  S_MUB <- colMeans(MUB)
+  r_ys_hat <- apply(g_hat*r_zs,2,range)
+  res <- list(S_MUB = S_MUB, phi_hat = phi_hat, phi = phi, r_ys_hat = r_ys_hat)
   return(res)
 }
 
-# 3. MUB_m
+# 3. MUB_M
 
-MUB_m <- function(Y, S, Z){
+MUB_M <- function(Y, S, Z){
   P <- ncol(Y)
-  ys <- Y*S; ys[ys==0] <- NA
-  zs <- Z*S; zs[zs==0] <- NA
+  ys <- ifelse(S == 1, Y, NA)
+  zs <- ifelse(S == 1, Z, NA)
   Yl <- (cbind(rep(NA, times = nrow(Y)), Y[,-P]))
   Zl <- (cbind(rep(NA, times = nrow(Z)), Z[,-P]))
   Sl <- (cbind(rep(NA, times = nrow(S)), S[,-P]))
-  ysl <- Yl*S; ysl[ysl==0] <- NA
+  ysl <- ifelse(S == 1, Yl, NA)
   dy <- (colMeans(ys, na.rm = T) - colMeans(Y))/colSds(Y)
   dz <- (colMeans(zs, na.rm = T) - colMeans(Z))/colSds(Z)
   r_yz_hat <- mapply(cor, as.data.frame(Yl), as.data.frame(Zl))
@@ -143,38 +149,38 @@ MUB_m <- function(Y, S, Z){
   sigma_y_hat <- apply(Yl, 2, p.sd)*(colSds(ys, na.rm = T)/colSds(ysl, na.rm = T))
   c_obs <- sigma_y_hat/colSds(Z)
   S_MUB <- g_hat*c_obs*(colMeans(zs, na.rm = T) - colMeans(Z))
-  res <- list(S_MUB, phi_hat, phi)
+  res <- list(S_MUB = S_MUB, phi_hat = phi_hat, phi = phi)
   return(res)
 } 
 
-# 4. Cov_h
+# 4. Cov_L
 
-Cov_h <- function(Y, S, Z){
+Cov_L <- function(Y, S, Z){
   P <- ncol(Y)
   Yl <- (cbind(rep(NA, times = nrow(Y)), Y[,-P]))
   Sl <- (cbind(rep(NA, times = nrow(S)), S[,-P]))
-  ysl <- Yl*Sl; ysl[ysl==0] <- NA
+  ysl <- ifelse(Sl == 1, Yl, NA)
   S_Cov <- (colMeans(ysl, na.rm = T) - colMeans(Yl))
   res <- S_Cov
   return(res)
 }
 
-# 5. Cov_a
+# 5. Cov_C
 
-Cov_a <- function(Y,S,Z){
+Cov_C <- function(Y,S,Z){
   P <- ncol(Y)
-  zs <- Z*S; zs[zs==0] <- NA
+  zs <- ifelse(S == 1, Z, NA)
   S_Cov <- (colMeans(zs, na.rm = T) - colMeans(Z))
   res <- S_Cov
   return(res)
 }
 
-# 6. Cov_m
+# 6. Cov_M
 
-Cov_m <- function(Y,S,Z){
+Cov_M <- function(Y,S,Z){
   P <- ncol(Y)
-  ys <- Y*S; ys[ys==0] <- NA
-  zs <- Z*S; zs[zs==0] <- NA
+  ys <- ifelse(S == 1, Y, NA)
+  zs <- ifelse(S == 1, Z, NA)
   Yl <- (cbind(rep(NA, times = nrow(Y)), Y[,-P]))
   Sl <- (cbind(rep(NA, times = nrow(S)), S[,-P]))
   Zl <- (cbind(rep(NA, times = nrow(Z)), Z[,-P]))
@@ -190,7 +196,7 @@ Cov_m <- function(Y,S,Z){
 
 MAD <- function(Y, S, M){
   P <- ncol(Y)
-  ys <- Y*S; ys[ys==0] <- NA
+  ys <- ifelse(S == 1, Y, NA)
   RS <- 2*abs(colMeans(ys, na.rm = T) - colMeans(Y))/(abs(colMeans(ys, na.rm = T))+abs(colMeans(Y)))
   RS_hat <- 2*abs(M)/(abs(colMeans(ys, na.rm = T))+abs(colMeans(ys, na.rm = T) - M))
   MADt <- mean(abs(RS_hat - RS), na.rm = T)
@@ -200,7 +206,7 @@ MAD <- function(Y, S, M){
 
 RMSD <- function(Y, S, M){
   P <- ncol(Y)
-  ys <- Y*S; ys[ys==0] <- NA
+  ys <- ifelse(S == 1, Y, NA)
   RS <- 2*abs(colMeans(ys, na.rm = T) - colMeans(Y))/(abs(colMeans(ys, na.rm = T))+abs(colMeans(Y)))
   RS_hat <- 2*abs(M)/(abs(colMeans(ys, na.rm = T))+abs(colMeans(ys, na.rm = T) - M))
   RMSDt <- sqrt(mean((RS_hat - RS)^2, na.rm = T))
@@ -290,52 +296,65 @@ cat("The average empirical cor(X_t, X_t-1) is:", mean(Cors), "\n")
 
 # Let's plot the variables at the first period and draw and get the skewness and kurtosis
 
-ab$skew <- (2*(ab$b - ab$a)*sqrt(ab$a + ab$b + 1))/((ab$a*ab$b+2)*sqrt(ab$a*ab$b))                               # Skewness
-ab$kurt <- (6*((ab$a - ab$b)^{2}*(ab$a+ab$b+1)-ab$a*ab$b*(ab$a+ab$b+2)))/(ab$a*ab$b*(ab$a+ab$b+2)*(ab$a+ab$b+3)) # Kurtosis
+ab$skew <- round((2 * (ab$beta - ab$alpha) * sqrt(ab$alpha + ab$beta + 1)) /
+                   ((ab$alpha * ab$beta + 2) * sqrt(ab$alpha * ab$beta)), 2)
 
+ab$kurt <- round((6 * ((ab$alpha - ab$beta)^2 * (ab$alpha + ab$beta + 1) -
+                         ab$alpha * ab$beta * (ab$alpha + ab$beta + 2))) /
+                   (ab$alpha * ab$beta * (ab$alpha + ab$beta + 2) * (ab$alpha + ab$beta + 3)), 2)
+
+ab$label <- paste0("α = ", ab$alpha, 
+                   ", β = ", ab$beta, 
+                   "\nSkew = ", ab$skew, 
+                   ", Kurt = ", ab$kurt)
+
+# Prepare data for plotting
 bt0_d1 <- as.data.frame(bt0[,,1])
-ab_n <- expand.grid(paste0("a",1:4), paste0("b",1:4))
-ab_n <- paste(ab_n[,1], ab_n[,2], sep = "_")
-colnames(bt0_d1) <- ab_n
-m_bt0_d1 <- melt(bt0_d1)
-m_bt0_d1[,3:4] <- colsplit(m_bt0_d1$variable, names = c("a", "b"), pattern = "_")
-m_bt0_d1$a <- gsub("[^0-9.-]", "", m_bt0_d1$a)
-m_bt0_d1$b <- gsub("[^0-9.-]", "", m_bt0_d1$b)
-m_bt0_d1 <- m_bt0_d1[,2:4]
+colnames(bt0_d1) <- paste0("a", ab$alpha, "_b", ab$beta)
 
-ggplot(m_bt0_d1, aes(value)) + geom_density(color = "darkslategray4") +
-  geom_histogram(aes(y = after_stat(density)), bindwidth = 0.05, color = "darkslategray4", fill = "darkslategray3") +
-  facet_grid(b~a, labeller = label_bquote(rows = beta:.(b), col = alpha:.(a))) + ylab("Density") + xlab("Value") + theme(text = element_text(size = 20))
-  theme(strip.background = element_blank(), strip.placement = "outside")
-ggsave(filename = "Betas.png", path = fold_graphs, width = 30, height = 30, units = "cm")
+m_bt0_d1 <- melt(bt0_d1, variable.name = "combo")
+m_bt0_d1 <- separate(m_bt0_d1, combo, into = c("a", "b"), sep = "_")
+m_bt0_d1$a <- as.integer(gsub("a", "", m_bt0_d1$a))
+m_bt0_d1$b <- as.integer(gsub("b", "", m_bt0_d1$b))
+m_bt0_d1 <- left_join(m_bt0_d1, ab, by = c("a" = "alpha", "b" = "beta"))
 
-custom_labels <- c(
-    `1.1` = expression(alpha == 1 ~ beta == 1),
-    `1.2` = expression(alpha == 1 ~ beta == 2),
-    `1.3` = expression(alpha == 1 ~ beta == 3),
-    `1.4` = expression(alpha == 1 ~ beta == 4)
+# Plot 1: All 16 combinations
+p1 <- ggplot(m_bt0_d1, aes(value)) + 
+  geom_histogram(fill = "#66c2a5", alpha = 0.8, color = "black", size = 0.3, bins = 30) + 
+  facet_wrap(~ label, scales = "free_y") +
+  ylab("Density") + 
+  xlab("Value") + 
+  theme_minimal(base_size = 20) +
+  theme(
+    strip.text = element_text(size = 14),
+    strip.background = element_blank()
   )
-m_bt0_d1 %>% 
-  filter(a==1) %>%   
-  ggplot(aes(value, color = interaction(a, b))) + 
-    geom_density(size = 1) + 
-    scale_color_manual(
-      values = hue_pal()(4),
-      labels = custom_labels,
-      guide = guide_legend(title = NULL)
-    ) +
-    ylab("Density") + 
-    xlab("Value") + 
-    theme_minimal(base_size = 20) +
-    theme(
-      legend.title = element_blank(),
-      legend.position = "right",
-      legend.key.size = unit(2, 'cm'),  
-      strip.background = element_blank(),
-      strip.placement = "outside"
-    )  
-ggsave(filename = "Betas2.png", path = fold_graphs, width = 30, height = 30, units = "cm")    
-  
+
+ggsave("Betas_1.png", p1, path = fold_graphs, width = 30, height = 30, units = "cm")
+
+# Plot 2: Only alpha = 1, beta = 1:4
+subset_ab <- filter(ab, alpha == 1)
+subset_bt0 <- bt0[, ab$alpha == 1, 1]
+bt0_d1_subset <- as.data.frame(subset_bt0)
+colnames(bt0_d1_subset) <- paste0("alpha1_b", subset_ab$beta)
+
+m_bt0_d1_subset <- melt(bt0_d1_subset, variable.name = "combo")
+m_bt0_d1_subset$b <- as.integer(gsub("alpha1_b", "", m_bt0_d1_subset$combo))
+m_bt0_d1_subset <- left_join(m_bt0_d1_subset, subset_ab, by = c("b" = "beta"))
+
+p2 <- ggplot(m_bt0_d1_subset, aes(value, fill = label)) + 
+  geom_histogram(alpha = 0.6, color = "black", size = 0.3, bins = 30) + 
+  facet_wrap(~ label, scales = "free_y") +
+  scale_fill_manual(values = nice_palette, guide = "none") + 
+  ylab("Density") + 
+  xlab("Value") + 
+  theme_minimal(base_size = 20) +
+  theme(
+    strip.text = element_text(size = 14),
+    strip.background = element_blank()
+  )
+
+ggsave("Betas_2.png", p2, path = fold_graphs, width = 30, height = 30, units = "cm")
 
 # (iii) Auxiliary variable
 
@@ -405,21 +424,27 @@ for (b in 1:n_betas){
 
 # (iv) Selection variable
 
-corS <- function(Y, rho){
+corS <- function(Y, rho, sample_rate = 0.5, var_strength = 0.05, noise_sd = 0.5){
   set.seed(4321)
   X <- array(data = NA, dim = dim(Y))
   for (d in 1:D){
     for (p in 1:Time){
       Y_temp <- Y[,p,d]
-      X_temp <- sample(x = c(0,1), size = length(Y[,p,d]), replace = TRUE)
-      Y.est <- residuals(glm(X_temp ~ Y_temp, family = "binomial"))
+      Y.est <- residuals(lm(rnorm(length(Y_temp)) ~ Y_temp))
       X_temp <- rho*sd(Y.est)*Y_temp + Y.est*sd(Y_temp)*sqrt(1-rho^2)
       X_temp <- (X_temp - min(X_temp))/(max(X_temp)-min(X_temp))
-      X[,p,d]<- ifelse(X_temp>median(X_temp),1,0)
+      
+      # Add small variability to the threshold around sample_rate
+      rate_jitter <- runif(1, 
+                           min = max(sample_rate - var_strength, 0.01), 
+                           max = min(sample_rate + var_strength, 0.99))
+      threshold <- quantile(X_temp, probs = 1 - rate_jitter)
+      X[,p,d] <- ifelse(X_temp > threshold, 1, 0)
     }
   }
   return(X)
 }
+
 
 cor_selt <- c(0.2, 0.4, 0.6, 0.8) 
 cor_sel <- c(0.513, 0.649, 0.801, 0.999)
@@ -473,7 +498,7 @@ for (b in 1:n_betas){
 
 #### - (V) Estimations - ####
 
-Est <- c("DDP_h", "MUB_a.3","MUB_a.5","MUB_a.8","MUB_m", "Cov_h", "Cov_a", "Cov_m")
+Est <- c("DDP_L", "MUB_C.5", "MUB_C","MUB_M", "Cov_L", "Cov_C", "Cov_M")
 mres <- c("MAD","RMSD")
 perf_y <- expand.grid("S" = 1:4, "Z" = 1:6, "M"= Est, "Y"= "Y", "beta" = NA, "a" = NA, "b" = NA, "res" = mres, "d" = 1:D)
 perf_b <- expand.grid("S" = 1:4, "Z" = 1:6, "M"= Est, "Y"= "Beta","beta" = 1:16, "res" = c("MAD", "RMSD"), "d" = 1:D)
@@ -525,7 +550,7 @@ rsh_tr <- cbind(rsh_tr, matrix(unlist(rsv_tr), ncol = Time, byrow = T))
 names(rsh_tr)[10:21] <- paste0("RS", 1:Time)
 rm(v, rsv, v_tr, rsv_tr)
 
-Est2 <- c("DDP(h)", "MUB(a.3)","MUB(a.5)","MUB(a.8)","MUB(m)", "Cov(h)", "Cov(a)", "Cov(m)")
+Est2 <- c("DDP(L)", "MUB(C.5)", "MUB(C)","MUB(M)", "Cov(L)", "Cov(C)", "Cov(M)")
 perf$M <- gsub("_(.*)$", "(\\1)", perf$M)
 perf <- perf %>% 
   mutate(S = fct_recode(factor(S), "0.2"="1", "0.4"="2", "0.6"="3", "0.8"="4"), M = factor(M, levels = Est2),
@@ -573,7 +598,7 @@ for (i in 1:n_rs){
     Zt <- Z[[cz]][,,d]
   }
   yt <- Yt*St; yt[yt==0] <- NA
-  Et <- DDP_h(Yt, St, Zt)[[1]]
+  Et <- DDP_L(Yt, St, Zt)[[1]]
   rsv[[i]] <- MAD(Yt, St, Et)[[1]]
   ck <- abs(Et - colMeans(yt, na.rm = TRUE))<0.3
   if (any(ck == T, na.rm = T)){
@@ -597,7 +622,7 @@ rs_tr <- rs_tr %>%
   mutate(S = fct_recode(factor(S), "0.2"="1", "0.4"="2", "0.6"="3", "0.8"="4"))
 
 #### - (VI) Graphs - ####
-setwd(fold_graphs) 
+setwd(fold_graphs)
 perf_plot <- perf %>% 
   mutate(M = factor(M, levels = Est2))
 perf_plot$S <- as.numeric(as.character(perf_plot$S));perf_plot$Z <- as.numeric(as.character(perf_plot$Z))
@@ -607,73 +632,131 @@ for (i in 1:length(mres)){
   # (i) Cross S x Z
   p_sz <- perf_plot %>% 
     filter(Z!=0.05 & Z!=0.95 & Y=="Y" & grepl(mres[i], res)) %>% 
-    ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
+    ggplot(aes(x = value, y = fct_rev(Estimator), color = Estimator)) + 
+    stat_pointinterval(position = position_dodge(width = 0.9), .width = c(0.5, 1), point_size = 3, show.legend = T) +
+    scale_color_manual(values = nice_palette, name = "Estimator") +
     ggh4x::facet_grid2(Z~S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = rho[YS]:.(S))) + ylab("") + xlab(mres[i]) +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
-          axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
+          axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"), panel.spacing = unit(2, "lines")) +
+    guides(size = "none", override.aes = list(size = 4, shape = 2))
   ggsave(paste0("Plot_SZ_", mres[i], ".png"), plot = p_sz, path = fold_graphs, width = 50, height = 50, units = "cm")
-  
  
   # (i) Cross S x Z - extreme values
   p_sz_e <- perf_plot %>% 
     filter(Z!=0.2 & Z!=0.8 & Y=="Y" & grepl(mres[i], res)) %>% 
-    ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.7) + scale_fill_manual(values = nice_palette) +
+    ggplot(aes(x = value, y = fct_rev(Estimator), color = Estimator)) + 
+    stat_pointinterval(position = position_dodge(width = 0.9), .width = c(0.5, 1), point_size = 3, show.legend = T) + 
+    scale_color_manual(values = nice_palette, name = "Estimator") +
     ggh4x::facet_grid2(Z~S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = rho[YS]:.(S))) + ylab("") + xlab(mres[i]) +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
-          axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
+          axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"), panel.spacing = unit(2, "lines")) +
+    guides(size = "none", override.aes = list(size = 4, shape = 2))
   ggsave(paste0("Plot_SZ_", mres[i], "_ext.png"), plot = p_sz_e, path = fold_graphs, width = 50, height = 50, units = "cm")
 
   # (iii) Different Y, ceteris paribus - To check how the estimators react to changes in Y distribution
   p_b <- perf_plot %>% 
     filter(Z==0.8 & S==0.6 & Y=="Beta" & grepl(mres[i], res)) %>% 
-    ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
+    ggplot(aes(x = value, y = fct_rev(Estimator), color = Estimator)) + 
+    stat_pointinterval(position = position_dodge(width = 0.9), .width = c(0.5, 1), point_size = 3, show.legend = T) + 
+    scale_color_manual(values = nice_palette, name = "Estimator") +
     ggh4x::facet_grid2(b~a, scales = "free", independent = "all", labeller = label_bquote(rows = beta:.(b), col = alpha:.(a))) + ylab("") + xlab(mres[i]) +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
-        axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
+        axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"), panel.spacing = unit(2, "lines")) +
+    guides(size = "none", override.aes = list(size = 4, shape = 2))
   ggsave(paste0("Plot_B_", mres[i], ".png"), plot = p_b, path = fold_graphs, width = 50, height = 50, units = "cm")
 
   # (iv) Different Y, with different S
   p_bs <- perf_plot %>% 
     filter(Z==0.8 & !is.na(a) & grepl(mres[i], res) & b==1) %>% 
-    ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
+    ggplot(aes(x = value, y = fct_rev(Estimator), color = Estimator)) + 
+    stat_pointinterval(position = position_dodge(width = 0.9), .width = c(0.5, 1), point_size = 3, show.legend = T) + 
+    scale_color_manual(values = nice_palette, name = "Estimator") +    
     ggh4x::facet_grid2(S~a, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YS]:.(S), col = alpha:.(a))) + ylab("") + xlab(mres[i]) +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
-        axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
+          axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"), panel.spacing = unit(2, "lines")) +
+    guides(size = "none", override.aes = list(size = 4, shape = 2))
   ggsave(paste0("Plot_BS_", mres[i], ".png"), plot = p_bs, path = fold_graphs, width = 50, height = 50, units = "cm")
 
   # (v) Different Y, with different Z
   p_bz <- perf_plot %>% 
     filter(S==0.4 & Z!=0.05 & Z!=0.95 & !is.na(a) & grepl(mres[i], res) & b==1) %>% 
-    ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
+    ggplot(aes(x = value, y = fct_rev(Estimator), color = Estimator)) + 
+    stat_pointinterval(position = position_dodge(width = 0.9), .width = c(0.5, 1), point_size = 3, show.legend = T) + 
+    scale_color_manual(values = nice_palette, name = "Estimator") +    
     ggh4x::facet_grid2(Z~a, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = alpha:.(a))) + ylab("") + xlab(mres[i])  +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
-          axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
+          axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"), panel.spacing = unit(2, "lines")) +
+    guides(size = "none", override.aes = list(size = 4, shape = 2))
   ggsave(paste0("Plot_BZ_", mres[i], ".png"), plot = p_bz, path = fold_graphs, width = 50, height = 50, units = "cm")
   
   # (vi) Cross S x Z - beta 1
   p_b1_sz <- perf_plot %>% 
     filter(Z!=0.05 & Z!=0.95 & !is.na(a) & grepl(mres[i], res) & beta==1) %>% 
-    ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
+    ggplot(aes(x = value, y = fct_rev(Estimator), color = Estimator)) + 
+    stat_pointinterval(position = position_dodge(width = 0.9), .width = c(0.5, 1), point_size = 3, show.legend = T) + 
+    scale_color_manual(values = nice_palette, name = "Estimator") +
     ggh4x::facet_grid2(Z~S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = rho[YS]:.(S))) + ylab("") + xlab(mres[i])  +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
-          axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
+          axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"), panel.spacing = unit(2, "lines")) +
+    guides(size = "none", override.aes = list(size = 4, shape = 2))
   ggsave(paste0("Plot_B1_SZ_",mres[i], ".png"), plot = p_b1_sz, path = fold_graphs, width = 50, height = 50, units = "cm")
   
   # (vii) Cross S x Z - beta 13
   p_b13_sz <- perf_plot %>% 
     filter(Z!=0.05 & Z!=0.95 & !is.na(a) & grepl(mres[i], res) & beta==13) %>% 
-    ggplot(aes(x = value, y = fct_rev(Estimator), fill = Estimator)) + 
-    geom_boxplot(alpha = 0.5) + scale_fill_manual(values = nice_palette) +
+    ggplot(aes(x = value, y = fct_rev(Estimator), color = Estimator)) + 
+    stat_pointinterval(position = position_dodge(width = 0.9), .width = c(0.5, 1), point_size = 3, show.legend = T) + 
+    scale_color_manual(values = nice_palette, name = "Estimator") +
     ggh4x::facet_grid2(Z~S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ]:.(Z), col = rho[YS]:.(S))) + ylab("") + xlab(mres[i])  +
     theme(text = element_text(size = 30), axis.text.y = element_blank(), axis.text.x = element_text(size = 15),
-          axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"))
+          axis.ticks.y = element_blank(), legend.key.size = unit(1.5, "cm"), panel.spacing = unit(2, "lines")) +
+    guides(size = "none", override.aes = list(size = 4, shape = 2))
   ggsave(paste0("Plot_B13_SZ_",mres[i], ".png"), plot = p_b13_sz, path = fold_graphs, width = 50, height = 50, units = "cm")
+  
+  p_b1_13 <- perf_plot %>%
+    filter(Z != 0.05, Z != 0.95, !is.na(a), grepl(mres[i], res), beta %in% c(1, 13)) %>%
+    mutate(alphabeta = paste0("α=", a, "|β=", b), alphabeta = factor(alphabeta, levels = unique(alphabeta))) %>%
+    ggplot(aes(x = alphabeta, y = value, color = Estimator)) +
+    stat_pointinterval(position = position_dodge(width = -1), .width = c(0.5, 0.8), point_size = 3, show.legend = TRUE) +
+    geom_vline(xintercept = 1.5, color = "gray", linewidth = 1.2) +
+    scale_color_manual(values = nice_palette, name = "Estimator") +
+    ggh4x::facet_grid2(Z ~ S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ] : .(Z), cols = rho[YS] : .(S))) +
+    labs(x = NULL, y = mres[i]) +
+    theme(text = element_text(size = 30), axis.text.x = element_text(size = 15), axis.text.y = element_text(size = 30, angle = 90, hjust = 0.5),
+          axis.ticks.y = element_blank(),legend.key.size = unit(1.5, "cm")) +
+    guides(size = "none", override.aes = list(size = 4, shape = 2)) +
+    coord_flip()
+  ggsave(paste0("Plot_B1_13_SZ_",mres[i], ".png"), plot = p_b1_13, path = fold_graphs, width = 50, height = 50, units = "cm")
+  
+  p_b1_16 <- perf_plot %>%
+    filter(Z != 0.05, Z != 0.95, !is.na(a), grepl(mres[i], res), beta %in% c(1, 16)) %>%
+    mutate(alphabeta = paste0("α=", a, "|β=", b), alphabeta = factor(alphabeta, levels = unique(alphabeta))) %>%
+    ggplot(aes(x = alphabeta, y = value, color = Estimator)) +
+    stat_pointinterval(position = position_dodge(width = -1), .width = c(0.5, 1), point_size = 3, show.legend = TRUE) +
+    geom_vline(xintercept = 1.5, color = "gray", linewidth = 1.2) +
+    scale_color_manual(values = nice_palette, name = "Estimator") +
+    ggh4x::facet_grid2(Z ~ S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ] : .(Z), cols = rho[YS] : .(S))) +
+    labs(x = NULL, y = mres[i]) +
+    theme(text = element_text(size = 30), axis.text.x = element_text(size = 15), axis.text.y = element_text(size = 30, angle = 90, hjust = 0.5),
+          axis.ticks.y = element_blank(),legend.key.size = unit(1.5, "cm")) +
+    guides(size = "none", override.aes = list(size = 4, shape = 2)) +
+    coord_flip()
+  ggsave(paste0("Plot_B1_16_SZ_",mres[i], ".png"), plot = p_b1_16, path = fold_graphs, width = 50, height = 50, units = "cm")
+  
+  p_b13_16 <- perf_plot %>%
+    filter(Z != 0.05, Z != 0.95, !is.na(a), grepl(mres[i], res), beta %in% c(13, 16)) %>%
+    mutate(alphabeta = paste0("α=", a, "|β=", b), alphabeta = factor(alphabeta, levels = unique(alphabeta))) %>%
+    ggplot(aes(x = alphabeta, y = value, color = Estimator)) +
+    stat_pointinterval(position = position_dodge(width = -1), .width = c(0.5, 1), point_size = 3, show.legend = TRUE) +
+    geom_vline(xintercept = 1.5, color = "gray", linewidth = 1.2) +
+    scale_color_manual(values = nice_palette, name = "Estimator") +
+    ggh4x::facet_grid2(Z ~ S, scales = "free", independent = "all", labeller = label_bquote(rows = rho[YZ] : .(Z), cols = rho[YS] : .(S))) +
+    labs(x = NULL, y = mres[i]) +
+    theme(text = element_text(size = 30), axis.text.x = element_text(size = 15), axis.text.y = element_text(size = 30, angle = 90, hjust = 0.5),
+          axis.ticks.y = element_blank(),legend.key.size = unit(1.5, "cm")) +
+    guides(size = "none", override.aes = list(size = 4, shape = 2)) +
+    coord_flip()
+  ggsave(paste0("Plot_B13_16_SZ_",mres[i], ".png"), plot = p_b13_16, path = fold_graphs, width = 50, height = 50, units = "cm")
 }
 
 Tab_Av <- perf_plot %>%
@@ -711,7 +794,7 @@ arsh %>%
   coord_flip() +
   geom_hline(data =ars, aes(yintercept=rs), col = "blue", linetype = "dashed") +
   theme(text = element_text(size = 30), strip.background = element_blank(), strip.placement = "outside", legend.key.size = unit(1.5, 'cm'),
-        axis.title.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank()) +
+        axis.title.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank(), , panel.spacing = unit(2, "lines")) +
   ylab("Relative Selectivity") + xlab("Estimator") +
   scale_fill_manual(values=nice_palette) 
 ggsave("Plot_AvSel.png", path = fold_graphs, width = 50, height = 50, units = "cm")
@@ -729,7 +812,8 @@ for (i in 1:length(mres)){
     ggplot(aes(x = d_rs, y = a_perf, color = Estimator)) + 
     geom_point(size = 3, alpha = 0.5) + ylab(mres[i]) + xlab(expression(abs(bar(RS)[est] - bar(RS)[real]))) +
     facet_grid(Z~S, labeller = label_bquote(rows = rho[YZ]:.(Z), col = rho[YS]:.(S))) + scale_color_manual(values = nice_palette) +
-    theme(text = element_text(size = 30), strip.background = element_blank(), strip.placement = "outside", legend.key.size = unit(1.5, 'cm')) 
+    theme(text = element_text(size = 30), strip.background = element_blank(), strip.placement = "outside", legend.key.size = unit(1.5, 'cm'),
+          panel.spacing = unit(2, "lines")) 
    ggsave(paste0("Plot_RS_", mres[i], ".png"), plot = p_sp, path = fold_graphs, width = 30, height = 30, units = "cm")
 }
 
@@ -749,8 +833,8 @@ p_res <- merge(MAD_d[,c("S", "Z", "Estimator", "d", "value")], RMSD_d[,c("S", "Z
   theme(text = element_text(size = 30),
         axis.text.y=element_blank(),
         axis.ticks.y=element_blank(),
-        legend.key.size = unit(2, 'cm'))    
-ggsave(paste0("MAD_RMSD.png"), plot = p_res, path = fold_graphs, width = 40, height = 40, units = "cm")
+        legend.key.size = unit(2, 'cm'), panel.spacing = unit(2, "lines"))    
+ggsave(paste0("MAD_RMSD.png"), plot = p_res, path = fold_graphs, width = 50, height = 50, units = "cm")
 
 #### - (VII) Checks - ####
 
