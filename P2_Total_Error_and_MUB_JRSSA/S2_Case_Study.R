@@ -25,7 +25,7 @@ compute_phi <- function(rho_XS, rho_XZ, rho_ZS) {
 setwd(fold_data)
 full_dat <- fread("TotErr_Rel20.csv") # We will use fread since we have a very large data set
 full_N <- nrow(full_dat)   
-full_N  # Number of observations is 21,565,473
+full_N  # Number of observations is 24,484,611
 
 # As a first exercise, let us use a limited number of observations so that we can perform faster analyses
 # To do this, let us first see how many unique values we have
